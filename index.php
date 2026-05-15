@@ -135,8 +135,15 @@ if (is_post()) {
 
     try {
         if ($action === 'save_project') {
-            if (!$auth->can('manage_projects')) {
-                permission_denied();
+            $projectId = (int) ($_POST['project_id'] ?? 0);
+            if ($projectId > 0) {
+                if (!$auth->can('manage_projects')) {
+                    permission_denied();
+                }
+            } else {
+                if (!$auth->can('create_projects')) {
+                    permission_denied();
+                }
             }
 
             $projectId = $projectService->save($_POST, $currentUser, $clientIp);
@@ -300,10 +307,19 @@ if ($view === 'settings' && !$auth->can('manage_settings')) {
 if ($view === 'logs' && !$auth->can('view_logs')) {
     permission_denied();
 }
-if (($view === 'projects' || $view === 'documents') && !$auth->can('manage_projects')) {
+if ($view === 'projects' && !$auth->can('view_projects')) {
     permission_denied();
 }
-if (($view === 'reports' || $view === 'attendance' || $view === 'personnel') && !$auth->can('view_reports')) {
+if ($view === 'documents' && !$auth->can('manage_documents')) {
+    permission_denied();
+}
+if ($view === 'reports' && !$auth->can('view_reports')) {
+    permission_denied();
+}
+if ($view === 'attendance' && !$auth->can('view_attendance')) {
+    permission_denied();
+}
+if ($view === 'personnel' && !$auth->can('view_personnel')) {
     permission_denied();
 }
 
@@ -323,7 +339,7 @@ $projectPagination = $projectService->paginate($filters, $projectPage, 20);
 $projects = $projectPagination['items'];
 $projectListQuery = array_merge(['view' => 'projects'], $filters, ['page' => $projectPagination['page']]);
 $projectEditId = (int) ($_GET['edit'] ?? 0);
-$editingProject = $projectEditId > 0 ? $projectService->find($projectEditId) : null;
+$editingProject = $auth->can('manage_projects') && $projectEditId > 0 ? $projectService->find($projectEditId) : null;
 $projectDocuments = $editingProject ? $projectService->documents((int) $editingProject['id']) : [];
 $projectPreviewId = (int) ($_GET['preview'] ?? 0);
 $previewingProject = $projectPreviewId > 0 ? $projectService->find($projectPreviewId) : null;

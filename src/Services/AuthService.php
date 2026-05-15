@@ -82,11 +82,15 @@ final class AuthService
             'manage_settings' => ['admin'],
             'manage_users' => ['admin'],
             'manage_performance' => ['admin'],
-            'manage_projects' => ['admin', 'editor', 'auditor'],
-            'manage_documents' => ['admin', 'editor', 'auditor'],
-            'view_reports' => ['admin', 'editor', 'auditor'],
-            'export_reports' => ['admin', 'editor', 'auditor'],
-            'view_logs' => ['admin', 'editor', 'auditor'],
+            'view_projects' => ['admin', 'editor', 'auditor'],
+            'create_projects' => ['admin', 'editor', 'auditor'],
+            'manage_projects' => ['admin', 'auditor'],
+            'view_personnel' => ['admin', 'auditor'],
+            'view_attendance' => ['admin', 'editor', 'auditor'],
+            'manage_documents' => ['admin', 'auditor'],
+            'view_reports' => ['admin', 'auditor'],
+            'export_reports' => ['admin', 'auditor'],
+            'view_logs' => ['admin', 'auditor'],
         ];
 
         if (!isset($map[$permission])) {

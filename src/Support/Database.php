@@ -41,6 +41,7 @@ final class Database
             ));
             self::$pdo->exec(sprintf('USE `%s`', $db['database']));
         }
+
         self::migrate();
         self::seed();
     }
@@ -88,7 +89,7 @@ final class Database
         if ($settingsCount === 0) {
             $defaults = [
                 'appearance_background' => '',
-                'brand_subtitle' => '项目执行、人员排班、过程文档、统计报表统一协同',
+                'brand_subtitle' => '',
                 'module_icons' => json_encode(app_config('default_icons'), JSON_UNESCAPED_UNICODE),
             ];
             $stmt = self::$pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)');
@@ -96,6 +97,13 @@ final class Database
                 $stmt->execute([$key, $value]);
             }
         }
+
+        $legacySubtitleValues = [
+            '项目执行、人员排班、过程文档、统计报表统一协同',
+            '椤圭洰鎵ц銆佷汉鍛樻帓鐝€佽繃绋嬫枃妗ｃ€佺粺璁℃姤琛ㄧ粺涓€鍗忓悓',
+        ];
+        $stmt = self::$pdo->prepare('UPDATE settings SET setting_value = ? WHERE setting_key = ? AND setting_value IN (?, ?)');
+        $stmt->execute(['', 'brand_subtitle', $legacySubtitleValues[0], $legacySubtitleValues[1]]);
 
         $projectCount = (int) self::$pdo->query('SELECT COUNT(*) FROM projects')->fetchColumn();
         if ($projectCount === 0) {
@@ -111,7 +119,7 @@ final class Database
                     '2026-05-06',
                     1,
                     '围绕教育护网项目开展系统梳理、网络安全分析、问题复盘和优化建议整理。',
-                    "1.完成；\n2.后续跟进风险清单；\n3.需加强网络安全专项技能；",
+                    "1. 完成现场支持；\n2. 后续跟进风险清单；\n3. 加强网络安全专项能力。",
                     0,
                     1,
                 ],
@@ -125,7 +133,7 @@ final class Database
                     '2026-05-07',
                     1,
                     '开展人社系统升级维护，包括数据库优化、安全加固和模块更新。',
-                    "1.系统升级完成；\n2.待销售回访；",
+                    "1. 系统升级完成；\n2. 待销售回访。",
                     1,
                     0,
                 ],
@@ -139,7 +147,7 @@ final class Database
                     '2026-05-09',
                     3,
                     '完成信息化建设项目前期支持、方案沟通、设备调研和实施交接准备。',
-                    "1.售前方案已确认；\n2.实施阶段待排期；",
+                    "1. 售前方案已确认；\n2. 实施阶段待排期。",
                     1,
                     0,
                 ],

@@ -1,6 +1,5 @@
 <?php
 $background = trim((string) ($settings['appearance_background'] ?? ''));
-$subtitle = trim((string) ($settings['brand_subtitle'] ?? ''));
 $flashSuccess = flash('success');
 $flashError = flash('error');
 $userInitial = isset($currentUser)
@@ -42,7 +41,7 @@ $userInitial = isset($currentUser)
                     <div class="ml-4 flex items-center text-left">
                         <i class="fas fa-project-diagram text-blue-600 text-2xl mr-3"></i>
                         <div>
-                            <h1 class="text-xl font-bold text-gray-900"><?= e(app_config('app_name')) ?> V1.0</h1>
+                            <h1 class="text-xl font-bold text-gray-900"><?= e(app_config('app_name')) ?> V1.1</h1>
                         </div>
                     </div>
                 </div>
@@ -70,18 +69,21 @@ $userInitial = isset($currentUser)
                 <div class="space-y-1">
                     <?php
                     $navItems = [
-                        'dashboard' => '数据概览',
-                        'projects' => '项目管理',
-                        'personnel' => '人员绩效',
-                        'attendance' => '出勤管理',
-                        'documents' => '项目文件',
-                        'reports' => '统计报表',
+                        'dashboard' => ['label' => '数据概览', 'permission' => null],
+                        'projects' => ['label' => '项目管理', 'permission' => 'view_projects'],
+                        'personnel' => ['label' => '人员绩效', 'permission' => 'view_personnel'],
+                        'attendance' => ['label' => '出勤管理', 'permission' => 'view_attendance'],
+                        'documents' => ['label' => '项目文件', 'permission' => 'manage_documents'],
+                        'reports' => ['label' => '统计报表', 'permission' => 'view_reports'],
                     ];
-                    foreach ($navItems as $key => $label):
+                    foreach ($navItems as $key => $item):
+                        if (!empty($item['permission']) && !$auth->can($item['permission'])) {
+                            continue;
+                        }
                     ?>
                         <a href="index.php?view=<?= e($key) ?>#<?= e($key) ?>" class="nav-link flex items-center px-4 py-3 <?= $view === $key ? 'active-nav text-blue-600 font-medium' : 'text-gray-600 hover:bg-gray-50' ?>" data-nav-target="<?= e($key) ?>">
                             <i class="<?= e($icons[$key] ?? 'fa-solid fa-circle') ?> w-5 h-5 mr-3"></i>
-                            <span><?= e($label) ?></span>
+                            <span><?= e($item['label']) ?></span>
                         </a>
                     <?php endforeach; ?>
                 </div>
@@ -95,10 +97,12 @@ $userInitial = isset($currentUser)
                                 <span>系统设置</span>
                             </a>
                         <?php endif; ?>
-                        <a href="index.php?view=logs#logs" class="nav-link flex items-center px-4 py-3 <?= $view === 'logs' ? 'active-nav text-blue-600 font-medium' : 'text-gray-600 hover:bg-gray-50' ?>" data-nav-target="logs">
-                            <i class="<?= e($icons['logs'] ?? 'fa-solid fa-history') ?> w-5 h-5 mr-3"></i>
-                            <span>操作日志</span>
-                        </a>
+                        <?php if ($auth->can('view_logs')): ?>
+                            <a href="index.php?view=logs#logs" class="nav-link flex items-center px-4 py-3 <?= $view === 'logs' ? 'active-nav text-blue-600 font-medium' : 'text-gray-600 hover:bg-gray-50' ?>" data-nav-target="logs">
+                                <i class="<?= e($icons['logs'] ?? 'fa-solid fa-history') ?> w-5 h-5 mr-3"></i>
+                                <span>操作日志</span>
+                            </a>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

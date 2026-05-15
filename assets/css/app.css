@@ -693,6 +693,25 @@ body.sidebar-open {
     padding-right: 1.25rem;
 }
 
+#projects-page th[data-project-col="tag"],
+#projects-page td[data-project-col="tag"],
+#projects-page th[data-project-col="feedback"],
+#projects-page td[data-project-col="feedback"] {
+    white-space: nowrap;
+}
+
+.project-tag-chip,
+.project-feedback-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    line-height: 1.15;
+    padding: 0.26rem 0.62rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
 #documents-page .space-y-3 > .rounded-lg:hover,
 #documents-page .space-y-3 > div.rounded-lg:hover {
     box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);

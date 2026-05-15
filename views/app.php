@@ -37,6 +37,8 @@ $scoreLabel = static function (float $value): string {
     $formatted = number_format($value, 2, '.', '');
     return rtrim(rtrim($formatted, '0'), '.');
 };
+$canCreateProjects = $auth->can('create_projects');
+$canManageProjects = $auth->can('manage_projects');
 $numberLabel = static function ($value): string {
     $formatted = number_format((float) $value, 1, '.', '');
     return rtrim(rtrim($formatted, '0'), '.');
@@ -160,21 +162,27 @@ $personnelWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六'
     <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
             <h2 class="text-2xl font-bold text-gray-900">项目管理</h2>
-            <p class="text-gray-600 mt-1">支持批量选择、预览、编辑、删除和分页查看项目</p>
+            <p class="text-gray-600 mt-1">
+                <?= $canManageProjects ? '支持批量选择、预览、编辑、删除和分页查看项目' : ($canCreateProjects ? '当前账号可新增项目并查看现有项目详情' : '当前账号仅可查看现有项目与项目详情') ?>
+            </p>
         </div>
-        <div class="flex flex-wrap items-center gap-3">
-            <form method="post" enctype="multipart/form-data" class="inline-flex">
-                <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="import_projects">
-                <label class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center cursor-pointer">
-                    <i class="fas fa-file-import mr-2"></i> 导入项目
-                    <input type="file" name="import_excel_file" accept=".xlsx,.csv" class="hidden" required onchange="if (this.files.length) { this.form.submit(); }">
-                </label>
-            </form>
-            <button id="add-project-btn" type="button" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center">
-                <i class="fas fa-plus mr-2"></i> 新增项目
-            </button>
-        </div>
+        <?php if ($canCreateProjects): ?>
+            <div class="flex flex-wrap items-center gap-3">
+                <?php if ($canManageProjects): ?>
+                    <form method="post" enctype="multipart/form-data" class="inline-flex">
+                        <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="import_projects">
+                        <label class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center cursor-pointer">
+                            <i class="fas fa-file-import mr-2"></i> 导入项目
+                            <input type="file" name="import_excel_file" accept=".xlsx,.csv" class="hidden" required onchange="if (this.files.length) { this.form.submit(); }">
+                        </label>
+                    </form>
+                <?php endif; ?>
+                <button id="add-project-btn" type="button" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center">
+                    <i class="fas fa-plus mr-2"></i> 新增项目
+                </button>
+            </div>
+        <?php endif; ?>
     </div>
 
     <div class="bg-white rounded-lg shadow p-5 mb-6 border border-gray-100">
@@ -215,21 +223,23 @@ $personnelWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六'
         </form>
 
         <div class="mt-4 flex flex-col gap-4 rounded-xl bg-slate-50/70 px-4 py-4 xl:flex-row xl:items-center xl:justify-between">
-            <form method="post" class="flex flex-col gap-3 lg:flex-row lg:items-center" id="project-batch-form">
-                <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="batch_delete_projects">
-                <?php foreach ($projectListQuery as $queryKey => $queryValue): ?>
-                    <input type="hidden" name="<?= e($queryKey) ?>" value="<?= e((string) $queryValue) ?>">
-                <?php endforeach; ?>
-                <div class="flex flex-wrap items-center gap-3">
-                    <select name="batch_action" id="project-batch-action" class="min-w-[12rem] px-3 py-2 border border-gray-300 rounded-lg">
-                        <option value="">批量操作</option>
-                        <option value="delete">删除选中项目</option>
-                    </select>
-                    <button type="submit" id="project-batch-submit" class="px-4 py-2 rounded-lg border border-red-200 text-red-700 hover:bg-red-50" disabled>执行</button>
-                    <div class="text-sm text-gray-500">已选 <span id="project-selected-count" class="font-semibold text-gray-900">0</span> 项</div>
-                </div>
-            </form>
+            <?php if ($canManageProjects): ?>
+                <form method="post" class="flex flex-col gap-3 lg:flex-row lg:items-center" id="project-batch-form">
+                    <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="batch_delete_projects">
+                    <?php foreach ($projectListQuery as $queryKey => $queryValue): ?>
+                        <input type="hidden" name="<?= e($queryKey) ?>" value="<?= e((string) $queryValue) ?>">
+                    <?php endforeach; ?>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <select name="batch_action" id="project-batch-action" class="min-w-[12rem] px-3 py-2 border border-gray-300 rounded-lg">
+                            <option value="">批量操作</option>
+                            <option value="delete">删除选中项目</option>
+                        </select>
+                        <button type="submit" id="project-batch-submit" class="px-4 py-2 rounded-lg border border-red-200 text-red-700 hover:bg-red-50" disabled>执行</button>
+                        <div class="text-sm text-gray-500">已选 <span id="project-selected-count" class="font-semibold text-gray-900">0</span> 项</div>
+                    </div>
+                </form>
+            <?php endif; ?>
 
             <div class="flex flex-wrap justify-end gap-3">
                 <button type="submit" form="project-filter-form" class="inline-flex h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(37,99,235,0.22)] transition hover:-translate-y-0.5 hover:bg-blue-700">
@@ -239,10 +249,6 @@ $personnelWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六'
                 <a href="index.php?view=projects#projects" class="inline-flex h-12 items-center gap-2 rounded-full border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:bg-slate-50">
                     <i class="fas fa-rotate-left text-sm"></i>
                     <span>重置</span>
-                </a>
-                <a href="index.php?action=export_report&<?= http_build_query(array_merge(['view' => 'projects'], $filters)) ?>" class="inline-flex h-12 items-center gap-2 rounded-full bg-emerald-600 px-5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(5,150,105,0.2)] transition hover:-translate-y-0.5 hover:bg-emerald-700">
-                    <i class="fas fa-file-excel text-sm"></i>
-                    <span>导出 Excel</span>
                 </a>
             </div>
         </div>
@@ -285,9 +291,11 @@ $personnelWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六'
             <table class="min-w-full divide-y divide-gray-200" id="projects-table">
                 <thead class="bg-gray-50">
                 <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        <input type="checkbox" id="projects-select-all" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                    </th>
+                    <?php if ($canManageProjects): ?>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <input type="checkbox" id="projects-select-all" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        </th>
+                    <?php endif; ?>
                     <th data-project-col="sequence" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">序号</th>
                     <th data-project-col="project_name" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">项目名称</th>
                     <th data-project-col="region" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">区域</th>
@@ -304,14 +312,16 @@ $personnelWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六'
                 <tbody class="bg-white divide-y divide-gray-200">
                 <?php if ($projects === []): ?>
                     <tr>
-                        <td colspan="12" data-project-empty class="px-6 py-10 text-center text-sm text-gray-500">暂无符合条件的项目</td>
+                        <td colspan="<?= $canManageProjects ? '12' : '11' ?>" data-project-empty class="px-6 py-10 text-center text-sm text-gray-500">暂无符合条件的项目</td>
                     </tr>
                 <?php endif; ?>
                 <?php foreach ($projects as $index => $item): ?>
                     <tr>
-                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <input type="checkbox" name="project_ids[]" value="<?= e((string) $item['id']) ?>" form="project-batch-form" class="project-row-checkbox h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                        </td>
+                        <?php if ($canManageProjects): ?>
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <input type="checkbox" name="project_ids[]" value="<?= e((string) $item['id']) ?>" form="project-batch-form" class="project-row-checkbox h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            </td>
+                        <?php endif; ?>
                         <td data-project-col="sequence" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e((string) ((($projectPagination['page'] - 1) * $projectPagination['per_page']) + $index + 1)) ?></td>
                         <td data-project-col="project_name" class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><?= e($item['project_name']) ?></td>
                         <td data-project-col="region" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e($item['project_region']) ?></td>
@@ -326,7 +336,7 @@ $personnelWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六'
                             $statusLabel = $workOrderStatuses[$statusKey] ?? '销售发布任务';
                             $statusClass = $workOrderStatusStyles[$statusKey] ?? $workOrderStatusStyles[\App\Services\ProjectService::STATUS_SALES_TASK];
                             ?>
-                            <span class="inline-flex px-3 py-1 text-xs rounded-full <?= e($statusClass) ?>"><?= e($statusLabel) ?></span>
+                            <span class="project-tag-chip inline-flex px-3 py-1 text-xs rounded-full <?= e($statusClass) ?>"><?= e($statusLabel) ?></span>
                         </td>
                         <td data-project-col="feedback" class="px-6 py-4 text-sm text-gray-500">
                             <?php
@@ -334,26 +344,28 @@ $personnelWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六'
                             $feedbackLabel = $feedbackTagOptions[$feedbackKey] ?? '正常';
                             $feedbackClass = $feedbackTagStyles[$feedbackKey] ?? $feedbackTagStyles[\App\Services\ProjectService::FEEDBACK_NORMAL];
                             ?>
-                            <span class="inline-flex px-3 py-1 text-xs rounded-full <?= e($feedbackClass) ?>"><?= e($feedbackLabel) ?></span>
+                            <span class="project-feedback-chip inline-flex px-3 py-1 text-xs rounded-full <?= e($feedbackClass) ?>"><?= e($feedbackLabel) ?></span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             <a href="index.php?<?= http_build_query(array_merge($projectListQuery, ['preview' => $item['id']])) ?>#projects" class="text-slate-600 hover:text-slate-800 mr-3">
                                 <i class="fas fa-eye mr-1"></i> 预览
                             </a>
-                            <a href="index.php?<?= http_build_query(array_merge($projectListQuery, ['edit' => $item['id']])) ?>#projects" class="text-blue-600 hover:text-blue-800 mr-3">
-                                <i class="fas fa-edit mr-1"></i> 编辑
-                            </a>
-                            <form method="post" class="inline" onsubmit="return confirm('确认删除该项目吗？');">
-                                <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="delete_project">
-                                <input type="hidden" name="project_id" value="<?= e((string) $item['id']) ?>">
-                                <?php foreach ($projectListQuery as $queryKey => $queryValue): ?>
-                                    <input type="hidden" name="<?= e($queryKey) ?>" value="<?= e((string) $queryValue) ?>">
-                                <?php endforeach; ?>
-                                <button class="text-red-600 hover:text-red-800" type="submit">
-                                    <i class="fas fa-trash mr-1"></i> 删除
-                                </button>
-                            </form>
+                            <?php if ($canManageProjects): ?>
+                                <a href="index.php?<?= http_build_query(array_merge($projectListQuery, ['edit' => $item['id']])) ?>#projects" class="text-blue-600 hover:text-blue-800 mr-3">
+                                    <i class="fas fa-edit mr-1"></i> 编辑
+                                </a>
+                                <form method="post" class="inline" onsubmit="return confirm('确认删除该项目吗？');">
+                                    <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="delete_project">
+                                    <input type="hidden" name="project_id" value="<?= e((string) $item['id']) ?>">
+                                    <?php foreach ($projectListQuery as $queryKey => $queryValue): ?>
+                                        <input type="hidden" name="<?= e($queryKey) ?>" value="<?= e((string) $queryValue) ?>">
+                                    <?php endforeach; ?>
+                                    <button class="text-red-600 hover:text-red-800" type="submit">
+                                        <i class="fas fa-trash mr-1"></i> 删除
+                                    </button>
+                                </form>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
