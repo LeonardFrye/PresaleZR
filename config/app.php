@@ -25,9 +25,8 @@ return [
         ],
     ],
     'roles' => [
-        'admin' => '管理员',
+        'admin' => '系统管理员',
         'editor' => '普通用户',
-        'auditor' => '审核员',
     ],
     'default_icons' => [
         'dashboard' => 'fa-solid fa-chart-line',

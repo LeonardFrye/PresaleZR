@@ -44,6 +44,15 @@ $numberLabel = static function ($value): string {
     return rtrim(rtrim($formatted, '0'), '.');
 };
 $personnelWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+$adminUserCount = 0;
+$editorUserCount = 0;
+foreach ($users as $userItem) {
+    if (($userItem['role'] ?? '') === 'admin') {
+        $adminUserCount++;
+    } elseif (($userItem['role'] ?? '') === 'editor') {
+        $editorUserCount++;
+    }
+}
 ?>
 <section id="dashboard-page" class="page-section <?= $view === 'dashboard' ? '' : 'hidden' ?>">
     <div class="mb-6">
@@ -133,7 +142,6 @@ $personnelWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六'
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">区域</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">支撑人员</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">开始时间</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
                 </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
@@ -720,10 +728,13 @@ $personnelWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六'
             </div>
         </div>
     </div>
-    <div class="bg-white rounded-lg shadow p-6 border border-gray-100">
-        <div class="flex justify-between items-center mb-6">
-            <h3 class="text-lg font-semibold text-gray-900">项目导出预览</h3>
-            <a href="index.php?action=export_report" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">导出 Excel</a>
+    <div class="bg-white rounded-lg shadow p-6 border border-gray-100 report-preview-panel">
+        <div class="flex justify-between items-center gap-4 mb-6 report-preview-head">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">项目导出预览</h3>
+                <p class="mt-1 text-sm text-slate-500">按导出报表视角预览当前项目数据，重点字段已优化排版显示。</p>
+            </div>
+            <a href="index.php?action=export_report" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg whitespace-nowrap">导出 Excel</a>
         </div>
         <div class="overflow-x-auto report-preview-wrap">
             <table class="min-w-full divide-y divide-gray-200 report-preview-table">
@@ -785,83 +796,93 @@ $personnelWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六'
 <section id="settings-page" class="page-section <?= $view === 'settings' ? '' : 'hidden' ?>">
     <div class="mb-6">
         <h2 class="text-2xl font-bold text-gray-900">系统设置</h2>
-        <p class="text-gray-600 mt-1">支持背景替换、图标配置和账号权限管理</p>
+        <p class="text-gray-600 mt-1">管理员可在这里新增、编辑、删除账号。</p>
     </div>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div class="bg-white rounded-lg shadow p-6 border border-gray-100">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">外观设置</h3>
-            <form class="grid grid-cols-1 md:grid-cols-2 gap-4" method="post">
-                <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="save_settings">
-                <div class="md:col-span-2">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">鑳屾櫙鍥剧墖 URL</label>
-                    <input type="text" name="appearance_background" value="<?= e($settings['appearance_background'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+    <div class="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-6">
+        <div class="bg-white rounded-xl shadow p-6 border border-gray-100">
+            <div class="mb-5">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900"><?= $editingUser ? '编辑账号' : '新增账号' ?></h3>
+                    <p class="text-sm text-gray-500 mt-1"><?= $editingUser ? '修改当前账号的信息。' : '创建新的系统管理员或普通用户账号。' ?></p>
                 </div>
-                <div class="md:col-span-2">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">平台副标题</label>
-                    <input type="text" name="brand_subtitle" value="<?= e($settings['brand_subtitle'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-md">
-                </div>
-                <?php foreach (app_config('default_icons', []) as $key => $defaultIcon): ?>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1"><?= e($pageTitleMap[$key] ?? $key) ?> 图标</label>
-                        <input type="text" name="icon_<?= e($key) ?>" value="<?= e($icons[$key] ?? $defaultIcon) ?>" class="w-full px-3 py-2 border border-gray-300 rounded-md">
-                    </div>
-                <?php endforeach; ?>
-                <div class="md:col-span-2 flex justify-end">
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">保存设置</button>
-                </div>
-            </form>
-        </div>
-        <div class="bg-white rounded-lg shadow p-6 border border-gray-100">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">账号权限</h3>
-            <form class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6" method="post">
+            </div>
+            <form class="grid grid-cols-1 gap-4" method="post">
                 <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_user">
-                <input type="hidden" name="user_id" value="">
+                <input type="hidden" name="user_id" value="<?= e((string) ($editingUser['id'] ?? 0)) ?>">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">账号名</label>
-                    <input type="text" name="username" required class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                    <input type="text" name="username" required class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="请输入登录账号" value="<?= e((string) ($editingUser['username'] ?? '')) ?>">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">显示名称</label>
-                    <input type="text" name="display_name" required class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                    <input type="text" name="display_name" required class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="请输入页面显示名称" value="<?= e((string) ($editingUser['display_name'] ?? '')) ?>">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">角色</label>
-                    <select name="role" class="w-full px-3 py-2 border border-gray-300 rounded-md">
-                        <option value="editor">普通用户</option>
-                        <option value="auditor">审核员</option>
-                        <option value="admin">管理员</option>
+                    <select name="role" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                        <option value="editor" <?= (($editingUser['role'] ?? 'editor') === 'editor') ? 'selected' : '' ?>>普通用户</option>
+                        <option value="admin" <?= (($editingUser['role'] ?? '') === 'admin') ? 'selected' : '' ?>>系统管理员</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
-                    <input type="password" name="password" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                    <input type="password" name="password" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="<?= $editingUser ? '留空则保持原密码' : '新建账号必须填写密码' ?>">
                 </div>
-                <div class="md:col-span-2 flex items-center justify-between">
-                    <label class="inline-flex items-center text-sm text-gray-700">
-                        <input type="checkbox" name="is_active" value="1" checked class="mr-2"> 启用账号
-                    </label>
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">创建账号</button>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    系统管理员拥有全部权限。普通用户可新增项目、查看项目和出勤，但不能进入人员绩效、报表、日志等管理页面。
+                </div>
+                <div class="flex items-center justify-between gap-3 pt-1">
+                    <?php if ($editingUser): ?>
+                        <a href="index.php?view=settings#settings" class="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">取消编辑</a>
+                    <?php else: ?>
+                        <span class="text-sm text-gray-400">保存后会立即生效</span>
+                    <?php endif; ?>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium"><?= $editingUser ? '保存修改' : '创建账号' ?></button>
                 </div>
             </form>
+        </div>
+        <div class="bg-white rounded-xl shadow border border-gray-100 overflow-hidden">
+            <div class="flex items-center justify-between gap-4 px-6 py-5 border-b border-gray-100">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">现有账号</h3>
+                    <p class="text-sm text-gray-500 mt-1">支持直接编辑和删除账号。</p>
+                </div>
+                <div class="text-sm text-gray-500">共 <?= e((string) count($users)) ?> 个账号</div>
+            </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                    <thead class="bg-slate-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">账号</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">角色</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
+                        <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">账号</th>
+                        <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">显示名称</th>
+                        <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">角色</th>
+                        <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">最近登录</th>
+                        <th class="px-6 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">操作</th>
                     </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
                     <?php foreach ($users as $item): ?>
-                        <tr>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e($item['username']) ?></td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e($item['display_name']) ?></td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e(role_label($item['role'])) ?></td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= (int) $item['is_active'] === 1 ? '启用' : '停用' ?></td>
+                        <tr class="hover:bg-slate-50/80">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800"><?= e($item['username']) ?></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600"><?= e($item['display_name']) ?></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold <?= ($item['role'] ?? '') === 'admin' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-100 text-slate-700 border border-slate-200' ?>">
+                                    <?= e(role_label($item['role'])) ?>
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e(format_datetime($item['last_login_at'])) ?></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                <div class="inline-flex items-center gap-2">
+                                    <a href="index.php?view=settings&user_edit=<?= e((string) $item['id']) ?>#settings" class="px-3 py-1.5 rounded-md border border-blue-200 text-blue-600 hover:bg-blue-50">编辑</a>
+                                    <form method="post" class="inline" onsubmit="return confirm('确认删除这个账号吗？');">
+                                        <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                                        <input type="hidden" name="action" value="delete_user">
+                                        <input type="hidden" name="user_id" value="<?= e((string) $item['id']) ?>">
+                                        <button type="submit" class="px-3 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50">删除</button>
+                                    </form>
+                                </div>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>

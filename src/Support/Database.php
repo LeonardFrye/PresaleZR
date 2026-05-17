@@ -6,6 +6,8 @@ namespace App\Support;
 
 use PDO;
 use PDOException;
+use RuntimeException;
+use Throwable;
 
 final class Database
 {
@@ -17,33 +19,8 @@ final class Database
             return;
         }
 
-        $db = $config['db'];
-        $autoCreateDatabase = (bool) ($db['auto_create_database'] ?? true);
-        $dsn = sprintf(
-            'mysql:host=%s;port=%s;%scharset=%s',
-            $db['host'],
-            $db['port'],
-            $autoCreateDatabase ? '' : sprintf('dbname=%s;', $db['database']),
-            $db['charset']
-        );
-
-        self::$pdo = new PDO($dsn, $db['username'], $db['password'], [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ]);
-
-        if ($autoCreateDatabase) {
-            self::$pdo->exec(sprintf(
-                'CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET %s COLLATE %s_unicode_ci',
-                $db['database'],
-                $db['charset'],
-                $db['charset']
-            ));
-            self::$pdo->exec(sprintf('USE `%s`', $db['database']));
-        }
-
-        self::migrate();
-        self::seed();
+        self::$pdo = self::connect($config['db'] ?? []);
+        self::ensureUserRoleModel(self::$pdo);
     }
 
     public static function connection(): PDO
@@ -55,8 +32,75 @@ final class Database
         return self::$pdo;
     }
 
-    private static function migrate(): void
+    public static function disconnect(): void
     {
+        self::$pdo = null;
+    }
+
+    public static function connect(array $dbConfig, bool $allowCreateDatabase = false): PDO
+    {
+        $database = trim((string) ($dbConfig['database'] ?? ''));
+        if ($database === '') {
+            throw new PDOException('数据库名称不能为空。');
+        }
+
+        if ($allowCreateDatabase || !empty($dbConfig['auto_create_database'])) {
+            $pdo = self::connectServer($dbConfig);
+            self::createDatabaseIfMissing($pdo, $database, (string) ($dbConfig['charset'] ?? 'utf8mb4'));
+            $pdo->exec('USE ' . self::quoteIdentifier($database));
+            return $pdo;
+        }
+
+        return new PDO(
+            self::databaseDsn($dbConfig),
+            (string) ($dbConfig['username'] ?? ''),
+            (string) ($dbConfig['password'] ?? ''),
+            self::pdoOptions()
+        );
+    }
+
+    public static function connectServer(array $dbConfig): PDO
+    {
+        return new PDO(
+            self::serverDsn($dbConfig),
+            (string) ($dbConfig['username'] ?? ''),
+            (string) ($dbConfig['password'] ?? ''),
+            self::pdoOptions()
+        );
+    }
+
+    public static function databaseExists(string $database, ?PDO $pdo = null): bool
+    {
+        if ($database === '') {
+            return false;
+        }
+
+        $pdo = $pdo ?: self::connection();
+        $stmt = $pdo->prepare('SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ? LIMIT 1');
+        $stmt->execute([$database]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    public static function isInstalled(?PDO $pdo = null): bool
+    {
+        try {
+            $pdo = $pdo ?: self::connection();
+            foreach (['users', 'settings', 'projects', 'documents', 'activity_logs'] as $table) {
+                if (!self::hasTable($pdo, $table)) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (Throwable $exception) {
+            return false;
+        }
+    }
+
+    public static function migrate(?PDO $pdo = null): void
+    {
+        $pdo = $pdo ?: self::connection();
         $schema = file_get_contents(__DIR__ . '/../../database/schema.sql');
         if ($schema === false) {
             throw new PDOException('无法读取数据库结构文件。');
@@ -65,101 +109,175 @@ final class Database
         $statements = array_filter(array_map('trim', preg_split('/;\s*[\r\n]+/', $schema) ?: []));
         foreach ($statements as $statement) {
             if ($statement !== '') {
-                self::$pdo->exec($statement);
+                $pdo->exec($statement);
             }
         }
     }
 
-    private static function seed(): void
+    public static function ensureBaseSettings(?PDO $pdo = null): void
     {
-        $count = (int) self::$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
-        if ($count === 0) {
-            $users = [
-                ['admin', 'admin123', '系统管理员', 'admin'],
-                ['editor', 'editor123', '项目编辑员', 'editor'],
-                ['auditor', 'auditor123', '审核员', 'auditor'],
-            ];
-            $stmt = self::$pdo->prepare('INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)');
-            foreach ($users as $user) {
-                $stmt->execute([$user[0], password_hash($user[1], PASSWORD_DEFAULT), $user[2], $user[3]]);
-            }
+        $pdo = $pdo ?: self::connection();
+        $defaults = [
+            'appearance_background' => '',
+            'brand_subtitle' => '',
+            'module_icons' => json_encode(app_config('default_icons'), JSON_UNESCAPED_UNICODE),
+        ];
+
+        $stmt = $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_key = setting_key');
+        foreach ($defaults as $key => $value) {
+            $stmt->execute([$key, $value]);
         }
 
-        $settingsCount = (int) self::$pdo->query('SELECT COUNT(*) FROM settings')->fetchColumn();
-        if ($settingsCount === 0) {
-            $defaults = [
-                'appearance_background' => '',
-                'brand_subtitle' => '',
-                'module_icons' => json_encode(app_config('default_icons'), JSON_UNESCAPED_UNICODE),
-            ];
-            $stmt = self::$pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)');
-            foreach ($defaults as $key => $value) {
-                $stmt->execute([$key, $value]);
-            }
-        }
-
-        $legacySubtitleValues = [
+        $legacySubtitles = [
             '项目执行、人员排班、过程文档、统计报表统一协同',
             '椤圭洰鎵ц銆佷汉鍛樻帓鐝€佽繃绋嬫枃妗ｃ€佺粺璁℃姤琛ㄧ粺涓€鍗忓悓',
         ];
-        $stmt = self::$pdo->prepare('UPDATE settings SET setting_value = ? WHERE setting_key = ? AND setting_value IN (?, ?)');
-        $stmt->execute(['', 'brand_subtitle', $legacySubtitleValues[0], $legacySubtitleValues[1]]);
+        $placeholders = implode(', ', array_fill(0, count($legacySubtitles), '?'));
+        $cleanup = $pdo->prepare('UPDATE settings SET setting_value = ? WHERE setting_key = ? AND setting_value IN (' . $placeholders . ')');
+        $cleanup->execute(array_merge(['', 'brand_subtitle'], $legacySubtitles));
+    }
 
-        $projectCount = (int) self::$pdo->query('SELECT COUNT(*) FROM projects')->fetchColumn();
-        if ($projectCount === 0) {
-            $adminId = (int) self::$pdo->query("SELECT id FROM users WHERE username = 'admin' LIMIT 1")->fetchColumn();
-            $projects = [
-                [
-                    '西南大学',
-                    '成都市',
-                    '向立',
-                    '实施',
-                    '余聪',
-                    '2026-05-06',
-                    '2026-05-06',
-                    1,
-                    '围绕教育护网项目开展系统梳理、网络安全分析、问题复盘和优化建议整理。',
-                    "1. 完成现场支持；\n2. 后续跟进风险清单；\n3. 加强网络安全专项能力。",
-                    0,
-                    1,
-                ],
-                [
-                    '人社局',
-                    '南充市',
-                    '陈明',
-                    '实施',
-                    '王天',
-                    '2026-05-07',
-                    '2026-05-07',
-                    1,
-                    '开展人社系统升级维护，包括数据库优化、安全加固和模块更新。',
-                    "1. 系统升级完成；\n2. 待销售回访。",
-                    1,
-                    0,
-                ],
-                [
-                    '西昌烟草',
-                    '凉山州',
-                    '李华',
-                    '售前',
-                    '孙大鹏、刘小花',
-                    '2026-05-07',
-                    '2026-05-09',
-                    3,
-                    '完成信息化建设项目前期支持、方案沟通、设备调研和实施交接准备。',
-                    "1. 售前方案已确认；\n2. 实施阶段待排期。",
-                    1,
-                    0,
-                ],
-            ];
-            $stmt = self::$pdo->prepare('INSERT INTO projects (
-                project_name, project_region, project_sales, support_role, support_personnel,
-                start_date, end_date, duration_days, task_summary, completion_feedback,
-                transfer_flag, completion_flag, created_by, updated_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-            foreach ($projects as $project) {
-                $stmt->execute(array_merge($project, [$adminId, $adminId]));
-            }
+    public static function countUsers(?PDO $pdo = null): int
+    {
+        $pdo = $pdo ?: self::connection();
+        if (!self::hasTable($pdo, 'users')) {
+            return 0;
         }
+
+        return (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+    }
+
+    public static function createAdminUser(array $adminData, ?PDO $pdo = null): void
+    {
+        $pdo = $pdo ?: self::connection();
+
+        $username = trim((string) ($adminData['username'] ?? ''));
+        $displayName = trim((string) ($adminData['display_name'] ?? ''));
+        $password = (string) ($adminData['password'] ?? '');
+
+        if ($username === '' || $displayName === '' || $password === '') {
+            throw new RuntimeException('管理员账号、显示名称和密码不能为空。');
+        }
+
+        $existing = $pdo->prepare('SELECT id FROM users WHERE username = ? LIMIT 1');
+        $existing->execute([$username]);
+        if ($existing->fetch()) {
+            throw new RuntimeException('管理员账号已存在，请更换账号名称。');
+        }
+
+        $stmt = $pdo->prepare('INSERT INTO users (username, password_hash, display_name, role, is_active) VALUES (?, ?, ?, ?, ?)');
+        $stmt->execute([$username, password_hash($password, PASSWORD_DEFAULT), $displayName, 'admin', 1]);
+    }
+
+    public static function install(array $dbConfig, array $adminData = []): array
+    {
+        $serverPdo = self::connectServer($dbConfig);
+        $database = trim((string) ($dbConfig['database'] ?? ''));
+        $databaseExists = self::databaseExists($database, $serverPdo);
+        $createdDatabase = false;
+
+        if (!$databaseExists) {
+            if (empty($dbConfig['auto_create_database'])) {
+                throw new RuntimeException('目标数据库不存在，请先创建数据库或勾选自动创建数据库。');
+            }
+
+            self::createDatabaseIfMissing($serverPdo, $database, (string) ($dbConfig['charset'] ?? 'utf8mb4'));
+            $createdDatabase = true;
+        }
+
+        $pdo = self::connect($dbConfig);
+        self::migrate($pdo);
+        self::ensureUserRoleModel($pdo);
+        self::ensureBaseSettings($pdo);
+
+        $createdAdmin = false;
+        if (self::countUsers($pdo) === 0) {
+            self::createAdminUser($adminData, $pdo);
+            $createdAdmin = true;
+        }
+
+        return [
+            'created_database' => $createdDatabase,
+            'created_admin' => $createdAdmin,
+        ];
+    }
+
+    private static function hasTable(PDO $pdo, string $table): bool
+    {
+        $stmt = $pdo->prepare('SHOW TABLES LIKE ?');
+        $stmt->execute([$table]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    private static function ensureUserRoleModel(PDO $pdo): void
+    {
+        if (!self::hasTable($pdo, 'users')) {
+            return;
+        }
+
+        try {
+            $pdo->exec("UPDATE users SET role = 'editor' WHERE role = 'auditor'");
+        } catch (Throwable $exception) {
+        }
+
+        try {
+            $pdo->exec("ALTER TABLE users MODIFY role ENUM('admin', 'editor') NOT NULL DEFAULT 'editor'");
+        } catch (Throwable $exception) {
+        }
+    }
+
+    private static function createDatabaseIfMissing(PDO $pdo, string $database, string $charset): void
+    {
+        if ($database === '') {
+            throw new RuntimeException('数据库名称不能为空。');
+        }
+
+        $charset = trim($charset) !== '' ? trim($charset) : 'utf8mb4';
+        $quotedDatabase = self::quoteIdentifier($database);
+        $pdo->exec(sprintf(
+            'CREATE DATABASE IF NOT EXISTS %s CHARACTER SET %s COLLATE %s_unicode_ci',
+            $quotedDatabase,
+            $charset,
+            $charset
+        ));
+    }
+
+    private static function serverDsn(array $dbConfig): string
+    {
+        $host = trim((string) ($dbConfig['host'] ?? '127.0.0.1'));
+        $port = max((int) ($dbConfig['port'] ?? 3306), 1);
+        $charset = trim((string) ($dbConfig['charset'] ?? 'utf8mb4'));
+        if ($charset === '') {
+            $charset = 'utf8mb4';
+        }
+
+        return sprintf('mysql:host=%s;port=%d;charset=%s', $host, $port, $charset);
+    }
+
+    private static function databaseDsn(array $dbConfig): string
+    {
+        $host = trim((string) ($dbConfig['host'] ?? '127.0.0.1'));
+        $port = max((int) ($dbConfig['port'] ?? 3306), 1);
+        $database = trim((string) ($dbConfig['database'] ?? ''));
+        $charset = trim((string) ($dbConfig['charset'] ?? 'utf8mb4'));
+        if ($charset === '') {
+            $charset = 'utf8mb4';
+        }
+
+        return sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', $host, $port, $database, $charset);
+    }
+
+    private static function quoteIdentifier(string $value): string
+    {
+        return '`' . str_replace('`', '``', $value) . '`';
+    }
+
+    private static function pdoOptions(): array
+    {
+        return [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ];
     }
 }

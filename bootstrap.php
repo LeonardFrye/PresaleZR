@@ -26,5 +26,16 @@ spl_autoload_register(static function ($class): void {
 
 require __DIR__ . '/src/Support/helpers.php';
 
-\App\Support\Database::boot($config);
+$currentScript = strtolower((string) basename($_SERVER['SCRIPT_NAME'] ?? ''));
+if ($currentScript !== 'install.php') {
+    try {
+        \App\Support\Database::boot($config);
+    } catch (Throwable $exception) {
+        if (PHP_SAPI !== 'cli' && !headers_sent()) {
+            header('Location: install.php');
+            exit;
+        }
 
+        throw $exception;
+    }
+}
