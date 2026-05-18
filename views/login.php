@@ -5,7 +5,7 @@
         </div>
         <div class="login-brand-copy">
             <p class="login-kicker">项目管理平台</p>
-            <h1>技术支撑事业部项目管理平台 V1.2</h1>
+            <h1>技术支撑事业部项目管理平台 V1.3</h1>
         </div>
     </div>
 

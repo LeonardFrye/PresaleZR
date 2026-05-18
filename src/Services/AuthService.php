@@ -77,7 +77,7 @@ final class AuthService
             return false;
         }
 
-        $role = $user['role'];
+        $role = (string) $user['role'];
         $map = [
             'manage_settings' => ['admin'],
             'manage_users' => ['admin'],

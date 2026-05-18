@@ -46,13 +46,14 @@ if (is_post()) {
                 'display_name' => $form['admin_display_name'],
                 'password' => $form['admin_password'],
             ]);
+
             write_config_file($dbConfig);
             Database::disconnect();
             $installedState = inspect_current_installation($dbConfig);
 
-            $messages = ['安装完成，数据库连接与表结构已就绪。'];
+            $messages = ['安装完成，数据库连接与表结构已经准备就绪。'];
             $messages[] = $result['created_database'] ? '已创建目标数据库。' : '目标数据库已存在。';
-            $messages[] = $result['created_admin'] ? '已创建首个管理员账号。' : '检测到已有账号，未新增管理员。';
+            $messages[] = $result['created_admin'] ? '已创建首个系统管理员账号。' : '检测到已有账号，本次未新建管理员。';
             $flashSuccess = implode(' ', $messages);
             $statusSummary = test_database_connection($dbConfig);
         }
@@ -66,7 +67,7 @@ if (is_post()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>系统安装 - 技术支撑事业部项目管理平台 V1.2</title>
+    <title>系统安装 - 技术支撑事业部项目管理平台 V1.3</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -86,8 +87,8 @@ if (is_post()) {
                     <span>安</span>
                 </div>
                 <p class="text-sm font-semibold tracking-[0.2em] text-blue-600">INSTALLER</p>
-                <h1 class="mt-3 text-3xl font-bold text-slate-900">技术支撑事业部项目管理平台 V1.2</h1>
-                <p class="mt-3 text-sm leading-7 text-slate-500">部署后请先访问 <code class="rounded bg-slate-100 px-2 py-1 text-slate-700">/install.php</code>，检测数据库连接并初始化系统。安装过程只会建表和初始化基础配置，不会写入任何测试项目数据。</p>
+                <h1 class="mt-3 text-3xl font-bold text-slate-900">技术支撑事业部项目管理平台 V1.3</h1>
+                <p class="mt-3 text-sm leading-7 text-slate-500">项目部署完成后，请先访问 <code class="rounded bg-slate-100 px-2 py-1 text-slate-700">/install.php</code> 检测数据库连接并初始化系统。安装过程只会建立表结构和基础配置，不会写入任何测试项目数据。</p>
             </div>
 
             <div class="space-y-4">
@@ -123,7 +124,7 @@ if (is_post()) {
                 <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-900">
                     <div class="font-semibold">安装说明</div>
                     <p class="mt-2">1. 先填写数据库信息并测试连接。</p>
-                    <p>2. 首次安装可勾选“自动创建数据库”。</p>
+                    <p>2. 首次安装时，如数据库尚未创建，可勾选自动创建数据库。</p>
                     <p>3. 安装完成后会自动写入配置文件，并创建首个系统管理员账号。</p>
                 </div>
             </div>
@@ -162,7 +163,7 @@ if (is_post()) {
                 <section>
                     <div class="mb-4">
                         <h2 class="text-xl font-semibold text-slate-900">首个系统管理员账号</h2>
-                        <p class="mt-1 text-sm text-slate-500">首次安装时由你自己配置系统管理员账号和密码。</p>
+                        <p class="mt-1 text-sm text-slate-500">首次安装时由你自行配置系统管理员账号和密码。</p>
                     </div>
                     <div class="grid gap-4 sm:grid-cols-2">
                         <?= render_input('admin_username', '系统管理员账号', $form['admin_username']) ?>

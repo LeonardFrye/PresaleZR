@@ -60,36 +60,38 @@ foreach ($users as $userItem) {
         <p class="text-gray-600 mt-1">技术支撑事业部项目管理平台数据统计与分析</p>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        <a href="index.php?view=projects#projects" class="card-hover bg-white rounded-lg shadow p-6 border border-gray-100">
-            <div class="flex items-center">
-                <div class="bg-blue-100 p-3 rounded-full">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
+        <a href="index.php?view=projects#projects" class="card-hover bg-white rounded-lg shadow px-5 py-5 border border-gray-100">
+            <div class="flex items-center gap-4">
+                <div class="bg-blue-100 p-3 rounded-full flex-shrink-0">
                     <i class="fas fa-project-diagram text-blue-600 text-xl"></i>
                 </div>
-                <div class="ml-4">
+                <div class="min-w-0">
                     <p class="text-sm font-medium text-gray-500">项目总数</p>
                     <p class="text-2xl font-bold text-gray-900"><?= e((string) $metrics['total_projects']) ?><span class="ml-1 text-base font-medium text-gray-500">个</span></p>
                 </div>
             </div>
         </a>
-        <a href="index.php?view=reports#reports" class="card-hover bg-white rounded-lg shadow p-6 border border-gray-100">
-            <div class="flex items-center">
-                <div class="bg-green-100 p-3 rounded-full">
+        <a href="index.php?view=reports#reports" class="card-hover bg-white rounded-lg shadow px-5 py-5 border border-gray-100">
+            <div class="flex items-center gap-4">
+                <div class="bg-green-100 p-3 rounded-full flex-shrink-0">
                     <i class="fas fa-clock text-green-600 text-xl"></i>
                 </div>
-                <div class="ml-4">
+                <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium text-gray-500">总工期</p>
-                    <p class="text-2xl font-bold text-gray-900"><?= e((string) $metrics['total_hours']) ?><span class="ml-1 text-base font-medium text-gray-500">小时</span></p>
-                    <p class="mt-1 text-sm text-gray-500"><?= e($numberLabel($metrics['total_days'])) ?> 天</p>
+                    <div class="mt-1 flex items-end justify-between gap-4">
+                        <p class="text-2xl font-bold text-gray-900 whitespace-nowrap"><?= e((string) $metrics['total_hours']) ?><span class="ml-1 text-base font-medium text-gray-500">小时</span></p>
+                        <p class="text-2xl font-bold text-gray-900 whitespace-nowrap text-right"><?= e($numberLabel($metrics['total_days'])) ?><span class="ml-1 text-base font-medium text-gray-500">天</span></p>
+                    </div>
                 </div>
             </div>
         </a>
-        <a href="index.php?view=attendance#attendance" class="card-hover bg-white rounded-lg shadow p-6 border border-gray-100">
-            <div class="flex items-center">
-                <div class="bg-purple-100 p-3 rounded-full">
+        <a href="index.php?view=attendance#attendance" class="card-hover bg-white rounded-lg shadow px-5 py-5 border border-gray-100">
+            <div class="flex items-center gap-4">
+                <div class="bg-purple-100 p-3 rounded-full flex-shrink-0">
                     <i class="fas fa-users text-purple-600 text-xl"></i>
                 </div>
-                <div class="ml-4">
+                <div class="min-w-0">
                     <p class="text-sm font-medium text-gray-500">整体出勤率</p>
                     <p class="text-2xl font-bold text-gray-900"><?= e((string) $metrics['attendance_rate']) ?>%</p>
                 </div>
@@ -142,6 +144,7 @@ foreach ($users as $userItem) {
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">区域</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">支撑人员</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">开始时间</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
                 </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
@@ -154,7 +157,7 @@ foreach ($users as $userItem) {
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e($item['start_date']) ?></td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?= $isDone ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800' ?>">
-                                <?= $isDone ? '&#24050;&#23436;&#25104;' : '&#36827;&#34892;&#20013;' ?>
+                                <?= $isDone ? '已完成' : '进行中' ?>
                             </span>
                         </td>
                     </tr>
@@ -453,7 +456,7 @@ foreach ($users as $userItem) {
                         <h3 class="text-2xl font-bold text-gray-900"><?= e($personnelDetail['person_name']) ?> 绩效明细</h3>
                         <p class="mt-1 text-sm text-gray-500"><?= e($personnelDetail['label']) ?>，活跃天数 <?= e((string) $personnelDetail['active_days']) ?> 天，总绩效 <?= e($scoreLabel((float) $personnelDetail['total_score'])) ?></p>
                         <?php if ($auth->can('manage_performance')): ?>
-                            <p class="mt-2 text-xs text-blue-700">管理员可直接修改每天的绩效数值，默认有项目时为 1。</p>
+                            <p class="mt-2 text-xs text-blue-700">管理员可直接调整每日绩效分值，项目日期默认记为 1。</p>
                         <?php endif; ?>
                     </div>
                     <div class="flex items-center gap-3">
@@ -542,7 +545,7 @@ foreach ($users as $userItem) {
 <section id="attendance-page" class="page-section <?= $view === 'attendance' ? '' : 'hidden' ?>">
     <div class="mb-6">
         <h2 class="text-2xl font-bold text-gray-900">出勤管理</h2>
-        <p class="text-gray-600 mt-1">每日自动识别项目安排，动态刷新本周出勤台账<?= $auth->can('manage_performance') ? '，管理员可手动调整为调休' : '' ?></p>
+        <p class="text-gray-600 mt-1">根据项目安排自动生成本周出勤台账<?= $auth->can('manage_performance') ? '，管理员可手动调整为空闲或调休' : '' ?></p>
     </div>
     <div class="grid grid-cols-1 gap-8">
         <div class="bg-white rounded-lg shadow p-6 border border-gray-100">
@@ -985,8 +988,8 @@ foreach ($users as $userItem) {
 <?php endif; ?>
 
 <div id="add-project-modal" class="fixed inset-0 z-50 <?= $openProjectModal ? '' : 'hidden' ?> bg-gray-900/50 px-4 py-8 overflow-y-auto">
-    <div class="max-w-5xl mx-auto bg-white rounded-xl shadow-2xl overflow-hidden" data-project-modal-card>
-        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+    <div class="max-w-5xl mx-auto bg-white rounded-xl shadow-2xl overflow-hidden project-modal-shell" data-project-modal-card>
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center project-modal-header">
             <div>
                 <h3 class="text-lg font-semibold text-gray-900"><?= $projectForm['id'] ? '编辑项目' : '新增项目' ?></h3>
                 <p class="text-sm text-gray-500 mt-1">按需录入项目销售、区域、人员、周期、任务、附件和销售评价</p>
@@ -995,7 +998,7 @@ foreach ($users as $userItem) {
                 <i class="fas fa-times"></i>
             </button>
         </div>
-        <div class="px-6 py-6">
+        <div class="px-6 py-6 project-modal-body">
             <form method="post" enctype="multipart/form-data" id="project-form">
                 <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_project">
@@ -1111,7 +1114,7 @@ foreach ($users as $userItem) {
                 </div>
             <?php endif; ?>
         </div>
-        <div class="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
+        <div class="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3 project-modal-footer">
             <a id="cancel-project" href="index.php?view=projects#projects" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
                 取消
             </a>

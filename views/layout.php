@@ -41,7 +41,7 @@ $userInitial = isset($currentUser)
                     <div class="ml-4 flex items-center text-left">
                         <i class="fas fa-project-diagram text-blue-600 text-2xl mr-3"></i>
                         <div>
-                            <h1 class="text-xl font-bold text-gray-900"><?= e(app_config('app_name')) ?> V1.2</h1>
+                            <h1 class="text-xl font-bold text-gray-900"><?= e(app_config('app_name')) ?> V1.3</h1>
                         </div>
                     </div>
                 </div>

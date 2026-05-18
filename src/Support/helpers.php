@@ -109,6 +109,7 @@ function now_string(): string
 function role_label(string $role): string
 {
     $roles = app_config('roles', []);
+
     return $roles[$role] ?? $role;
 }
 
@@ -155,9 +156,10 @@ function support_people(string $value): array
 
 function weekday_label(string $date): string
 {
-    $map = ['日', '一', '二', '三', '四', '五', '六'];
+    $map = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
     $index = (int) date('w', strtotime($date));
-    return '周' . $map[$index];
+
+    return $map[$index] ?? '';
 }
 
 function week_range(?string $pivot = null): array
@@ -189,4 +191,3 @@ function permission_denied(): void
     http_response_code(403);
     exit('没有权限执行此操作。');
 }
-

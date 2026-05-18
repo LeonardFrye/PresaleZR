@@ -178,8 +178,8 @@ final class ProjectService
                 }
 
                 $shared = array_values(array_intersect(
-                    support_people($left['support_personnel']),
-                    support_people($right['support_personnel'])
+                    support_people((string) $left['support_personnel']),
+                    support_people((string) $right['support_personnel'])
                 ));
 
                 if ($shared === []) {

@@ -164,6 +164,20 @@ document.addEventListener('DOMContentLoaded', function () {
     const addProjectModal = document.getElementById('add-project-modal');
     const closeModal = document.getElementById('close-modal');
     const cancelProject = document.getElementById('cancel-project');
+    const projectModalBody = addProjectModal?.querySelector('.project-modal-body');
+
+    function syncProjectModalState() {
+        if (!addProjectModal) {
+            return;
+        }
+
+        const isOpen = !addProjectModal.classList.contains('hidden');
+        document.body.classList.toggle('project-modal-open', isOpen);
+
+        if (isOpen) {
+            projectModalBody?.scrollTo({ top: 0, behavior: 'auto' });
+        }
+    }
 
     function closeProjectModal(event) {
         if (event) {
@@ -172,11 +186,13 @@ document.addEventListener('DOMContentLoaded', function () {
         if (addProjectModal) {
             addProjectModal.classList.add('hidden');
         }
+        syncProjectModalState();
     }
 
     if (addProjectBtn && addProjectModal) {
         addProjectBtn.addEventListener('click', function () {
             addProjectModal.classList.remove('hidden');
+            syncProjectModalState();
         });
     }
     if (closeModal) {
@@ -192,6 +208,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     }
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && addProjectModal && !addProjectModal.classList.contains('hidden')) {
+            closeProjectModal();
+        }
+    });
+    syncProjectModalState();
 
     const previewModal = document.getElementById('project-preview-modal');
     if (previewModal) {
@@ -242,21 +264,30 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (batchForm) {
         batchForm.addEventListener('submit', function (event) {
+            if (batchForm.dataset.nativeSubmitting === '1') {
+                delete batchForm.dataset.nativeSubmitting;
+                return;
+            }
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+
             const checkedCount = projectCheckboxes.filter((checkbox) => checkbox.checked).length;
             if (checkedCount === 0) {
-                event.preventDefault();
                 window.alert('请先选择要操作的项目');
                 return;
             }
             if (!batchAction || batchAction.value !== 'delete') {
-                event.preventDefault();
                 window.alert('请选择批量操作');
                 return;
             }
             if (!window.confirm(`确认删除选中的 ${checkedCount} 个项目吗？`)) {
-                event.preventDefault();
+                return;
             }
-        });
+
+            batchForm.dataset.nativeSubmitting = '1';
+            HTMLFormElement.prototype.submit.call(batchForm);
+        }, true);
     }
 
     const projectColumnChooser = document.getElementById('project-column-chooser');

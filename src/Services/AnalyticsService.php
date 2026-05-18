@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use RuntimeException;
+
 final class AnalyticsService
 {
     private $projectService;
@@ -92,7 +94,7 @@ final class AnalyticsService
         $persons = [];
 
         foreach ($this->projects as $project) {
-            foreach (support_people($project['support_personnel']) as $person) {
+            foreach (support_people((string) $project['support_personnel']) as $person) {
                 $personName = trim((string) $person);
                 if ($personName === '') {
                     continue;
@@ -107,7 +109,7 @@ final class AnalyticsService
                 ];
                 foreach ($days as $day) {
                     $date = $day['date'];
-                    if (!in_date_range($date, $project['start_date'], $project['end_date'])) {
+                    if (!in_date_range($date, (string) $project['start_date'], (string) $project['end_date'])) {
                         continue;
                     }
                     $persons[$personKey]['days'][$date][] = $project['project_name'];
@@ -187,13 +189,13 @@ final class AnalyticsService
         $status = trim($status);
 
         if ($personName === '') {
-            throw new \RuntimeException('请选择技术人员。');
+            throw new RuntimeException('请选择技术人员。');
         }
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $workDate) !== 1) {
-            throw new \RuntimeException('出勤日期格式不正确。');
+            throw new RuntimeException('出勤日期格式不正确。');
         }
         if (!in_array($status, ['', 'rest'], true)) {
-            throw new \RuntimeException('出勤状态不合法。');
+            throw new RuntimeException('出勤状态不合法。');
         }
 
         if ($status === '') {
@@ -218,7 +220,7 @@ final class AnalyticsService
                 WHERE 1=1';
         $params = [];
 
-        if ($user['role'] === 'editor') {
+        if (($user['role'] ?? '') === 'editor') {
             $sql .= ' AND l.user_id = ?';
             $params[] = (int) $user['id'];
         }

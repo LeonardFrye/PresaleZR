@@ -135,6 +135,10 @@ body.sidebar-open {
     overflow: hidden;
 }
 
+body.project-modal-open {
+    overflow: hidden;
+}
+
 .project-filter-actions {
     display: flex;
     flex-wrap: wrap;
@@ -896,6 +900,59 @@ body.sidebar-open {
 #add-project-modal .max-w-5xl {
     border: 1px solid rgba(148, 163, 184, 0.18);
     box-shadow: 0 20px 48px rgba(15, 23, 42, 0.14);
+}
+
+#add-project-modal {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.project-modal-shell {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 1.5rem);
+}
+
+.project-modal-header,
+.project-modal-footer {
+    flex-shrink: 0;
+    background: #ffffff;
+}
+
+.project-modal-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 767px) {
+    #add-project-modal {
+        padding: 0.65rem;
+    }
+
+    .project-modal-shell {
+        max-height: calc(100vh - 1.3rem);
+        border-radius: 1rem;
+    }
+
+    .project-modal-header,
+    .project-modal-body,
+    .project-modal-footer {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .project-modal-footer {
+        gap: 0.75rem;
+        justify-content: stretch;
+    }
+
+    .project-modal-footer a,
+    .project-modal-footer button {
+        flex: 1 1 0;
+        justify-content: center;
+    }
 }
 
 .flash {

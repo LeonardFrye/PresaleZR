@@ -315,6 +315,7 @@ final class PersonnelPerformanceService
 
         $names = array_values($people);
         sort($names);
+
         return $names;
     }
 
@@ -395,6 +396,7 @@ final class PersonnelPerformanceService
                     'weeks' => $this->buildMonthWeeks($monthStart, $monthEnd, $days),
                 ];
             }
+
             return $groups;
         }
 
@@ -414,6 +416,7 @@ final class PersonnelPerformanceService
             $cells[] = $days[$date] ?? $this->emptyDay($date);
             $cursor = strtotime('+1 day', $cursor);
         }
+
         return $cells;
     }
 
