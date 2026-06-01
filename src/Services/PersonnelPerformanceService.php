@@ -9,6 +9,8 @@ use RuntimeException;
 
 final class PersonnelPerformanceService
 {
+    private const LEGACY_PROJECT_KEY = '__legacy_daily__';
+
     private $pdo;
     private $projectService;
     private $auth;
@@ -37,11 +39,12 @@ final class PersonnelPerformanceService
 
             while ($cursor <= $end) {
                 $date = date('Y-m-d', $cursor);
-                $hasTask = !empty($assignments[$person][$date]);
-                if ($hasTask) {
+                $tasks = $assignments[$person][$date] ?? [];
+                if ($tasks !== []) {
                     $activeDays++;
-                    $totalScore += $overrides[$person][$date] ?? 1.0;
+                    $totalScore += $this->sumTaskScores($tasks, $overrides[$person][$date] ?? []);
                 }
+
                 $cursor = strtotime('+1 day', $cursor);
             }
 
@@ -94,10 +97,11 @@ final class PersonnelPerformanceService
             $date = date('Y-m-d', $cursor);
             $tasks = $taskMap[$date] ?? [];
             $hasTask = $tasks !== [];
-            $score = $hasTask ? ($overrides[$personName][$date] ?? 1.0) : 0.0;
+
             if ($hasTask) {
+                $tasks = $this->hydrateTaskScores($tasks, $overrides[$personName][$date] ?? []);
                 $activeDays++;
-                $totalScore += $score;
+                $totalScore += $this->sumHydratedTaskScores($tasks);
             }
 
             $days[$date] = [
@@ -108,7 +112,6 @@ final class PersonnelPerformanceService
                 'weekday' => weekday_label($date),
                 'has_task' => $hasTask,
                 'tasks' => $tasks,
-                'score' => $score,
             ];
 
             $cursor = strtotime('+1 day', $cursor);
@@ -138,19 +141,24 @@ final class PersonnelPerformanceService
 
         $dates = array_keys($scores);
         sort($dates);
-        $startDate = $dates[0];
-        $endDate = $dates[count($dates) - 1];
+        $startDate = (string) $dates[0];
+        $endDate = (string) $dates[count($dates) - 1];
         $assignments = $this->assignmentMap($startDate, $endDate, $personName);
         $taskMap = $assignments[$personName] ?? [];
 
         $replace = $this->pdo->prepare(
-            'INSERT INTO personnel_performance_scores (person_name, work_date, score, updated_by) VALUES (?, ?, ?, ?)
+            'INSERT INTO personnel_performance_scores (person_name, work_date, project_id, score, updated_by) VALUES (?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE score = VALUES(score), updated_by = VALUES(updated_by), updated_at = CURRENT_TIMESTAMP'
         );
-        $delete = $this->pdo->prepare('DELETE FROM personnel_performance_scores WHERE person_name = ? AND work_date = ?');
+        $delete = $this->pdo->prepare(
+            'DELETE FROM personnel_performance_scores WHERE person_name = ? AND work_date = ? AND project_id = ?'
+        );
+        $deleteLegacy = $this->pdo->prepare(
+            'DELETE FROM personnel_performance_scores WHERE person_name = ? AND work_date = ? AND project_id IS NULL'
+        );
         $savedDates = [];
 
-        foreach ($scores as $date => $rawScore) {
+        foreach ($scores as $date => $dateScores) {
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $date)) {
                 continue;
             }
@@ -158,15 +166,38 @@ final class PersonnelPerformanceService
                 continue;
             }
 
-            $score = round((float) $rawScore, 2);
-            if ($score < 0) {
-                $score = 0.0;
+            $validTasks = [];
+            foreach ($taskMap[$date] as $task) {
+                $projectId = (int) ($task['project_id'] ?? 0);
+                if ($projectId <= 0) {
+                    continue;
+                }
+
+                $validTasks[$projectId] = round((float) ($task['default_score'] ?? 0), 2);
             }
 
-            if (abs($score - 1.0) < 0.00001) {
-                $delete->execute([$personName, $date]);
-            } else {
-                $replace->execute([$personName, $date, $score, (int) $user['id']]);
+            if ($validTasks === []) {
+                continue;
+            }
+
+            $deleteLegacy->execute([$personName, $date]);
+
+            foreach ((array) $dateScores as $projectId => $rawScore) {
+                $projectId = (int) $projectId;
+                if ($projectId <= 0 || !array_key_exists($projectId, $validTasks)) {
+                    continue;
+                }
+
+                $score = round((float) $rawScore, 2);
+                if ($score < 0) {
+                    $score = 0.0;
+                }
+
+                if (abs($score - $validTasks[$projectId]) < 0.00001) {
+                    $delete->execute([$personName, $date, $projectId]);
+                } else {
+                    $replace->execute([$personName, $date, $projectId, $score, (int) $user['id']]);
+                }
             }
 
             $savedDates[] = $date;
@@ -198,7 +229,6 @@ final class PersonnelPerformanceService
             while ($cursor <= $end) {
                 $date = date('Y-m-d', $cursor);
                 $tasks = $assignments[$person][$date] ?? [];
-                $score = $tasks !== [] ? ($overrides[$person][$date] ?? 1.0) : null;
 
                 if ($tasks === []) {
                     $rows[] = [
@@ -215,7 +245,8 @@ final class PersonnelPerformanceService
                     continue;
                 }
 
-                foreach ($tasks as $index => $task) {
+                $tasks = $this->hydrateTaskScores($tasks, $overrides[$person][$date] ?? []);
+                foreach ($tasks as $task) {
                     $rows[] = [
                         'month' => (int) date('n', $cursor),
                         'day' => (int) date('j', $cursor),
@@ -224,7 +255,7 @@ final class PersonnelPerformanceService
                         'project_sales' => (string) ($task['project_sales'] ?? ''),
                         'project_name' => (string) ($task['project_name'] ?? ''),
                         'task_summary' => (string) ($task['task_summary'] ?? ''),
-                        'score' => $index === 0 ? (float) $score : '',
+                        'score' => $task['score'] ?? '',
                     ];
                 }
 
@@ -248,13 +279,50 @@ final class PersonnelPerformanceService
                 id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 person_name VARCHAR(100) NOT NULL,
                 work_date DATE NOT NULL,
-                score DECIMAL(8,2) NOT NULL DEFAULT 1.00,
+                project_id INT UNSIGNED NULL,
+                score DECIMAL(8,2) NOT NULL DEFAULT 0.00,
                 updated_by INT UNSIGNED NULL,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE KEY uk_person_date (person_name, work_date),
+                UNIQUE KEY uk_person_date_project (person_name, work_date, project_id),
                 CONSTRAINT fk_personnel_scores_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
         );
+
+        $columns = $this->pdo->query('SHOW COLUMNS FROM personnel_performance_scores')->fetchAll() ?: [];
+        $columnNames = [];
+        foreach ($columns as $column) {
+            $columnNames[] = $column['Field'];
+        }
+
+        if (!in_array('project_id', $columnNames, true)) {
+            $this->pdo->exec('ALTER TABLE personnel_performance_scores ADD COLUMN project_id INT UNSIGNED NULL AFTER work_date');
+        }
+
+        $this->pdo->exec('ALTER TABLE personnel_performance_scores MODIFY COLUMN score DECIMAL(8,2) NOT NULL DEFAULT 0.00');
+
+        $indexes = $this->pdo->query('SHOW INDEX FROM personnel_performance_scores')->fetchAll() ?: [];
+        $hasLegacyIndex = false;
+        $hasProjectIndex = false;
+
+        foreach ($indexes as $index) {
+            $keyName = (string) ($index['Key_name'] ?? '');
+            if ($keyName === 'uk_person_date') {
+                $hasLegacyIndex = true;
+            }
+            if ($keyName === 'uk_person_date_project') {
+                $hasProjectIndex = true;
+            }
+        }
+
+        if ($hasLegacyIndex) {
+            $this->pdo->exec('ALTER TABLE personnel_performance_scores DROP INDEX uk_person_date');
+        }
+
+        if (!$hasProjectIndex) {
+            $this->pdo->exec(
+                'ALTER TABLE personnel_performance_scores ADD UNIQUE KEY uk_person_date_project (person_name, work_date, project_id)'
+            );
+        }
     }
 
     private function resolvePeriod(string $period, string $anchorDate): array
@@ -323,26 +391,29 @@ final class PersonnelPerformanceService
     {
         $map = [];
         foreach ($this->projectService->list() as $project) {
-            $projectStart = max($startDate, (string) $project['start_date']);
-            $projectEnd = min($endDate, (string) $project['end_date']);
-            if ($projectStart > $projectEnd) {
+            $projectRangeStart = max($startDate, (string) ($project['start_date'] ?? ''));
+            $projectRangeEnd = min($endDate, (string) ($project['end_date'] ?? ''));
+            if ($projectRangeStart > $projectRangeEnd) {
                 continue;
             }
 
+            $dailyScores = project_daily_workload_scores((string) ($project['start_at'] ?? ''), (string) ($project['end_at'] ?? ''));
             $people = support_people((string) $project['support_personnel']);
             foreach ($people as $person) {
                 if ($personFilter !== null && $person !== $personFilter) {
                     continue;
                 }
 
-                $cursor = strtotime($projectStart);
-                $end = strtotime($projectEnd);
+                $cursor = strtotime($projectRangeStart);
+                $end = strtotime($projectRangeEnd);
                 while ($cursor <= $end) {
                     $date = date('Y-m-d', $cursor);
                     $map[$person][$date][] = [
-                        'project_sales' => (string) $project['project_sales'],
-                        'project_name' => (string) $project['project_name'],
-                        'task_summary' => trim((string) $project['task_summary']),
+                        'project_id' => (int) ($project['id'] ?? 0),
+                        'project_sales' => (string) ($project['project_sales'] ?? ''),
+                        'project_name' => (string) ($project['project_name'] ?? ''),
+                        'task_summary' => trim((string) ($project['task_summary'] ?? '')),
+                        'default_score' => round((float) ($dailyScores[$date] ?? 0.0), 2),
                     ];
                     $cursor = strtotime('+1 day', $cursor);
                 }
@@ -354,7 +425,7 @@ final class PersonnelPerformanceService
 
     private function overrideMap(string $startDate, string $endDate, ?string $personFilter = null): array
     {
-        $sql = 'SELECT person_name, work_date, score FROM personnel_performance_scores WHERE work_date BETWEEN ? AND ?';
+        $sql = 'SELECT person_name, work_date, project_id, score FROM personnel_performance_scores WHERE work_date BETWEEN ? AND ?';
         $params = [$startDate, $endDate];
 
         if ($personFilter !== null) {
@@ -368,17 +439,87 @@ final class PersonnelPerformanceService
         $map = [];
 
         foreach ($rows as $row) {
-            $map[$row['person_name']][$row['work_date']] = (float) $row['score'];
+            $person = (string) $row['person_name'];
+            $date = (string) $row['work_date'];
+            $projectId = $row['project_id'] === null ? null : (int) $row['project_id'];
+
+            if ($projectId === null) {
+                $map[$person][$date][self::LEGACY_PROJECT_KEY] = (float) $row['score'];
+                continue;
+            }
+
+            $map[$person][$date][$projectId] = (float) $row['score'];
         }
 
         return $map;
+    }
+
+    private function hydrateTaskScores(array $tasks, array $overrideRow): array
+    {
+        $legacyScore = array_key_exists(self::LEGACY_PROJECT_KEY, $overrideRow)
+            ? (float) $overrideRow[self::LEGACY_PROJECT_KEY]
+            : null;
+        $hasProjectOverrides = false;
+
+        foreach ($overrideRow as $projectKey => $value) {
+            if ($projectKey === self::LEGACY_PROJECT_KEY) {
+                continue;
+            }
+
+            $hasProjectOverrides = true;
+            break;
+        }
+
+        foreach ($tasks as $index => $task) {
+            $projectId = (int) ($task['project_id'] ?? 0);
+            $defaultScore = round((float) ($task['default_score'] ?? 0.0), 2);
+
+            if ($projectId > 0 && array_key_exists($projectId, $overrideRow)) {
+                $tasks[$index]['score'] = (float) $overrideRow[$projectId];
+                continue;
+            }
+
+            if (!$hasProjectOverrides && $legacyScore !== null && $index === 0) {
+                $tasks[$index]['score'] = $legacyScore;
+                continue;
+            }
+
+            if (!$hasProjectOverrides && $legacyScore !== null) {
+                $tasks[$index]['score'] = '';
+                continue;
+            }
+
+            $tasks[$index]['score'] = $defaultScore;
+        }
+
+        return $tasks;
+    }
+
+    private function sumTaskScores(array $tasks, array $overrideRow): float
+    {
+        return $this->sumHydratedTaskScores($this->hydrateTaskScores($tasks, $overrideRow));
+    }
+
+    private function sumHydratedTaskScores(array $tasks): float
+    {
+        $total = 0.0;
+        foreach ($tasks as $task) {
+            $score = $task['score'] ?? '';
+            if ($score === '') {
+                continue;
+            }
+
+            $total += (float) $score;
+        }
+
+        return $total;
     }
 
     private function calendarGroups(string $period, string $startDate, string $endDate, array $days): array
     {
         if ($period === 'week') {
             return [[
-                'title' => date('Y年m月d日', strtotime($startDate)) . ' - ' . date('Y年m月d日', strtotime($endDate)),
+                'title' => date('Y年n月j日', strtotime($startDate)) . ' - ' . date('Y年n月j日', strtotime($endDate)),
                 'compact' => false,
                 'weeks' => [$this->buildWeekCells($startDate, $days)],
             ]];
@@ -388,7 +529,10 @@ final class PersonnelPerformanceService
             $groups = [];
             $cursor = strtotime($startDate);
             for ($month = 1; $month <= 12; $month++) {
-                $monthStart = date('Y-m-01', strtotime(date('Y', $cursor) . '-' . str_pad((string) $month, 2, '0', STR_PAD_LEFT) . '-01'));
+                $monthStart = date(
+                    'Y-m-01',
+                    strtotime(date('Y', $cursor) . '-' . str_pad((string) $month, 2, '0', STR_PAD_LEFT) . '-01')
+                );
                 $monthEnd = date('Y-m-t', strtotime($monthStart));
                 $groups[] = [
                     'title' => date('Y年n月', strtotime($monthStart)),
@@ -452,7 +596,6 @@ final class PersonnelPerformanceService
             'weekday' => weekday_label($date),
             'has_task' => false,
             'tasks' => [],
-            'score' => 0.0,
             'in_current_month' => false,
         ];
     }

@@ -2,13 +2,20 @@
 $metrics = $dashboard['metrics'];
 $projectForm = $editingProject ?: [
     'id' => 0,
+    'project_type' => '',
     'project_name' => '',
+    'project_priority' => '普通',
     'project_region' => '',
     'project_sales' => '',
+    'support_department' => '技术支撑事业部',
+    'cross_department' => '',
     'support_role' => '售前',
     'support_personnel' => '',
+    'start_at' => date('Y-m-d 09:00:00'),
+    'end_at' => date('Y-m-d 18:00:00'),
     'start_date' => date('Y-m-d'),
     'end_date' => date('Y-m-d'),
+    'project_hours' => 1,
     'task_summary' => '',
     'completion_feedback' => '',
     'transfer_flag' => 0,
@@ -29,9 +36,12 @@ $feedbackTagStyles = [
     \App\Services\ProjectService::FEEDBACK_BONUS => 'bg-emerald-100 text-emerald-700 border border-emerald-200',
     \App\Services\ProjectService::FEEDBACK_COMPLAINT => 'bg-rose-100 text-rose-700 border border-rose-200',
 ];
-$openProjectModal = $editingProject !== null || array_key_exists('edit', $_GET);
+$openProjectModal = $editingProject !== null;
 $weekdayOf = static function (?string $date): string {
     return $date ? weekday_label($date) : '';
+};
+$datePartOf = static function (?string $dateTime): string {
+    return $dateTime ? date('Y-m-d', strtotime($dateTime)) : '';
 };
 $scoreLabel = static function (float $value): string {
     $formatted = number_format($value, 2, '.', '');
@@ -237,7 +247,7 @@ foreach ($users as $userItem) {
             <?php if ($canManageProjects): ?>
                 <form method="post" class="flex flex-col gap-3 lg:flex-row lg:items-center" id="project-batch-form">
                     <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
-                    <input type="hidden" name="action" value="batch_delete_projects">
+                    <input type="hidden" name="action" value="batch_projects">
                     <?php foreach ($projectListQuery as $queryKey => $queryValue): ?>
                         <input type="hidden" name="<?= e($queryKey) ?>" value="<?= e((string) $queryValue) ?>">
                     <?php endforeach; ?>
@@ -245,8 +255,9 @@ foreach ($users as $userItem) {
                         <select name="batch_action" id="project-batch-action" class="min-w-[12rem] px-3 py-2 border border-gray-300 rounded-lg">
                             <option value="">批量操作</option>
                             <option value="delete">删除选中项目</option>
+                            <option value="export">导出选中项目</option>
                         </select>
-                        <button type="submit" id="project-batch-submit" class="px-4 py-2 rounded-lg border border-red-200 text-red-700 hover:bg-red-50" disabled>执行</button>
+                        <button type="submit" id="project-batch-submit" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60" disabled>执行</button>
                         <div class="text-sm text-gray-500">已选 <span id="project-selected-count" class="font-semibold text-gray-900">0</span> 项</div>
                     </div>
                 </form>
@@ -282,7 +293,7 @@ foreach ($users as $userItem) {
                         'role' => '岗位',
                         'personnel' => '支撑人员',
                         'date_range' => '开始 / 结束',
-                        'duration' => '工期',
+                        'duration' => '项目工时',
                         'tag' => '标签',
                         'feedback' => '反馈标签',
                     ];
@@ -314,20 +325,19 @@ foreach ($users as $userItem) {
                     <th data-project-col="role" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">岗位</th>
                     <th data-project-col="personnel" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">支撑人员</th>
                     <th data-project-col="date_range" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">开始 / 结束</th>
-                    <th data-project-col="duration" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">工期</th>
+                    <th data-project-col="duration" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">项目工时</th>
                     <th data-project-col="tag" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">标签</th>
                     <th data-project-col="feedback" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">反馈标签</th>
-                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
                 </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                 <?php if ($projects === []): ?>
                     <tr>
-                        <td colspan="<?= $canManageProjects ? '12' : '11' ?>" data-project-empty class="px-6 py-10 text-center text-sm text-gray-500">暂无符合条件的项目</td>
+                        <td colspan="<?= $canManageProjects ? '11' : '10' ?>" data-project-empty class="px-6 py-10 text-center text-sm text-gray-500">暂无符合条件的项目</td>
                     </tr>
                 <?php endif; ?>
                 <?php foreach ($projects as $index => $item): ?>
-                    <tr>
+                    <tr class="project-table-row cursor-pointer" data-project-row-toggle="<?= e((string) $item['id']) ?>">
                         <?php if ($canManageProjects): ?>
                             <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                                 <input type="checkbox" name="project_ids[]" value="<?= e((string) $item['id']) ?>" form="project-batch-form" class="project-row-checkbox h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
@@ -339,8 +349,8 @@ foreach ($users as $userItem) {
                         <td data-project-col="sales" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e($item['project_sales']) ?></td>
                         <td data-project-col="role" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e($item['support_role']) ?></td>
                         <td data-project-col="personnel" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e($item['support_personnel']) ?></td>
-                        <td data-project-col="date_range" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e($item['start_date']) ?> / <?= e($item['end_date']) ?></td>
-                        <td data-project-col="duration" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e((string) $item['duration_days']) ?> 天</td>
+                        <td data-project-col="date_range" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e(format_datetime($item['start_at'] ?? $item['start_date'])) ?> / <?= e(format_datetime($item['end_at'] ?? $item['end_date'])) ?></td>
+                        <td data-project-col="duration" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?= e($numberLabel($item['project_hours'] ?? 0)) ?> 绩效</td>
                         <td data-project-col="tag" class="px-6 py-4 text-sm text-gray-500">
                             <?php
                             $statusKey = $item['work_order_status'] ?? \App\Services\ProjectService::STATUS_SALES_TASK;
@@ -357,26 +367,33 @@ foreach ($users as $userItem) {
                             ?>
                             <span class="project-feedback-chip inline-flex px-3 py-1 text-xs rounded-full <?= e($feedbackClass) ?>"><?= e($feedbackLabel) ?></span>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <a href="index.php?<?= http_build_query(array_merge($projectListQuery, ['preview' => $item['id']])) ?>#projects" class="text-slate-600 hover:text-slate-800 mr-3">
-                                <i class="fas fa-eye mr-1"></i> 预览
-                            </a>
-                            <?php if ($canManageProjects): ?>
-                                <a href="index.php?<?= http_build_query(array_merge($projectListQuery, ['edit' => $item['id']])) ?>#projects" class="text-blue-600 hover:text-blue-800 mr-3">
-                                    <i class="fas fa-edit mr-1"></i> 编辑
-                                </a>
-                                <form method="post" class="inline" onsubmit="return confirm('确认删除该项目吗？');">
-                                    <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
-                                    <input type="hidden" name="action" value="delete_project">
-                                    <input type="hidden" name="project_id" value="<?= e((string) $item['id']) ?>">
-                                    <?php foreach ($projectListQuery as $queryKey => $queryValue): ?>
-                                        <input type="hidden" name="<?= e($queryKey) ?>" value="<?= e((string) $queryValue) ?>">
-                                    <?php endforeach; ?>
-                                    <button class="text-red-600 hover:text-red-800" type="submit">
-                                        <i class="fas fa-trash mr-1"></i> 删除
-                                    </button>
-                                </form>
-                            <?php endif; ?>
+                    </tr>
+                    <tr class="project-action-row hidden" data-project-action-row="<?= e((string) $item['id']) ?>">
+                        <td colspan="<?= $canManageProjects ? '11' : '10' ?>" class="px-6 pb-4 pt-0">
+                            <div class="project-action-panel">
+                                <div class="project-action-panel__label">项目操作</div>
+                                <div class="project-action-panel__buttons">
+                                    <a href="index.php?<?= http_build_query(array_merge($projectListQuery, ['preview' => $item['id']])) ?>#projects" class="project-action-btn project-action-btn-preview">
+                                        <i class="fas fa-eye"></i> 预览
+                                    </a>
+                                    <?php if ($canManageProjects): ?>
+                                        <a href="index.php?<?= http_build_query(array_merge($projectListQuery, ['edit' => $item['id']])) ?>#projects" class="project-action-btn project-action-btn-edit">
+                                            <i class="fas fa-edit"></i> 编辑
+                                        </a>
+                                        <form method="post" class="inline-flex" onsubmit="return confirm('确认删除该项目吗？');">
+                                            <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                                            <input type="hidden" name="action" value="delete_project">
+                                            <input type="hidden" name="project_id" value="<?= e((string) $item['id']) ?>">
+                                            <?php foreach ($projectListQuery as $queryKey => $queryValue): ?>
+                                                <input type="hidden" name="<?= e($queryKey) ?>" value="<?= e((string) $queryValue) ?>">
+                                            <?php endforeach; ?>
+                                            <button class="project-action-btn project-action-btn-delete" type="submit">
+                                                <i class="fas fa-trash"></i> 删除
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -405,19 +422,20 @@ foreach ($users as $userItem) {
 </section>
 
 <section id="personnel-page" class="page-section <?= $view === 'personnel' ? '' : 'hidden' ?>">
-    <div class="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
+    <div class="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between personnel-page-head">
+        <div class="personnel-page-intro">
+            <span class="personnel-page-chip"><?= e($personnelBoard['label']) ?></span>
             <h2 class="text-2xl font-bold text-gray-900">人员绩效</h2>
         </div>
-        <form class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-5 shadow-sm md:flex-row md:items-end" method="get">
+        <form class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-5 shadow-sm md:flex-row md:items-end personnel-toolbar" method="get">
             <input type="hidden" name="view" value="personnel">
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">时间维度</label>
-                <div class="flex gap-2">
+                <div class="flex gap-2 personnel-period-switch">
                     <?php foreach (['year' => '年', 'month' => '月', 'week' => '周'] as $periodKey => $periodLabel): ?>
                         <label class="cursor-pointer">
                             <input type="radio" name="personnel_period" value="<?= e($periodKey) ?>" class="sr-only peer" <?= $personnelBoard['period'] === $periodKey ? 'checked' : '' ?>>
-                            <span class="inline-flex items-center rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 peer-checked:border-blue-600 peer-checked:bg-blue-50 peer-checked:text-blue-700"><?= e($periodLabel) ?></span>
+                            <span class="inline-flex items-center rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 peer-checked:border-blue-600 peer-checked:bg-blue-50 peer-checked:text-blue-700 personnel-period-pill"><?= e($periodLabel) ?></span>
                         </label>
                     <?php endforeach; ?>
                 </div>
@@ -426,21 +444,24 @@ foreach ($users as $userItem) {
                 <label class="block text-sm font-medium text-gray-700 mb-1">参考日期</label>
                 <input type="date" name="personnel_date" value="<?= e($personnelBoard['anchor_date']) ?>" class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
-            <div class="flex gap-2">
-                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">切换</button>
-                <a href="index.php?view=personnel#personnel" class="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50">重置</a>
-                <a href="index.php?action=export_personnel_performance&personnel_period=<?= e($personnelBoard['period']) ?>&personnel_date=<?= e($personnelBoard['anchor_date']) ?>" class="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700">一键生成绩效</a>
+            <div class="flex gap-2 personnel-toolbar-actions">
+                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 personnel-action-btn personnel-action-btn--primary">切换</button>
+                <a href="index.php?view=personnel#personnel" class="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50 personnel-action-btn personnel-action-btn--muted">重置</a>
+                <a href="index.php?action=export_personnel_performance&personnel_period=<?= e($personnelBoard['period']) ?>&personnel_date=<?= e($personnelBoard['anchor_date']) ?>" class="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 personnel-action-btn personnel-action-btn--accent">一键生成绩效</a>
             </div>
         </form>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 personnel-board-grid">
         <?php foreach ($personnelBoard['cards'] as $card): ?>
-            <a href="index.php?view=personnel&personnel_period=<?= e($personnelBoard['period']) ?>&personnel_date=<?= e($personnelBoard['anchor_date']) ?>&personnel_person=<?= urlencode($card['name']) ?>#personnel" class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
-                <div class="text-lg font-semibold text-gray-900"><?= e($card['name']) ?></div>
-                <div class="mt-4 text-sm text-gray-500">总绩效</div>
-                <div class="mt-1 text-3xl font-bold text-blue-700"><?= e($scoreLabel((float) $card['total_score'])) ?></div>
-                <div class="mt-4 flex items-center justify-between text-sm text-gray-500">
+            <a href="index.php?view=personnel&personnel_period=<?= e($personnelBoard['period']) ?>&personnel_date=<?= e($personnelBoard['anchor_date']) ?>&personnel_person=<?= urlencode($card['name']) ?>#personnel" class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md personnel-board-card">
+                <div class="personnel-board-card__top">
+                    <div class="text-lg font-semibold text-gray-900 personnel-board-card__name"><?= e($card['name']) ?></div>
+                    <span class="personnel-board-card__badge"><?= e((string) $card['active_days']) ?> 天</span>
+                </div>
+                <div class="mt-4 text-sm text-gray-500 personnel-board-card__label">累计绩效</div>
+                <div class="mt-1 text-3xl font-bold text-blue-700 personnel-board-card__score"><?= e($scoreLabel((float) $card['total_score'])) ?></div>
+                <div class="mt-4 flex items-center justify-between text-sm text-gray-500 personnel-board-card__foot">
                     <span>有项目天数</span>
                     <span class="font-medium text-gray-700"><?= e((string) $card['active_days']) ?></span>
                 </div>
@@ -449,26 +470,43 @@ foreach ($users as $userItem) {
     </div>
 
     <?php if ($personnelDetail): ?>
-        <div class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 px-4 py-6">
-            <div class="mx-auto max-w-7xl rounded-2xl bg-white shadow-2xl">
-                <div class="flex flex-col gap-4 border-b border-gray-200 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                        <h3 class="text-2xl font-bold text-gray-900"><?= e($personnelDetail['person_name']) ?> 绩效明细</h3>
-                        <p class="mt-1 text-sm text-gray-500"><?= e($personnelDetail['label']) ?>，活跃天数 <?= e((string) $personnelDetail['active_days']) ?> 天，总绩效 <?= e($scoreLabel((float) $personnelDetail['total_score'])) ?></p>
-                        <?php if ($auth->can('manage_performance')): ?>
-                            <p class="mt-2 text-xs text-blue-700">管理员可直接调整每日绩效分值，项目日期默认记为 1。</p>
-                        <?php endif; ?>
+        <div class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 px-4 py-6 personnel-detail-modal">
+            <div class="mx-auto max-w-7xl rounded-2xl bg-white shadow-2xl personnel-detail-shell">
+                <div class="border-b border-gray-200 px-6 py-5 personnel-detail-header">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div class="min-w-0">
+                            <div class="personnel-detail-kicker">人员绩效明细</div>
+                            <h3 class="text-2xl font-bold text-gray-900"><?= e($personnelDetail['person_name']) ?></h3>
+                            <p class="mt-1 text-sm text-gray-500"><?= e($personnelDetail['label']) ?> 绩效记录</p>
+                        </div>
+                        <div class="flex items-center gap-3 personnel-detail-actions">
+                            <?php if ($auth->can('manage_performance')): ?>
+                                <button type="submit" form="personnel-performance-form" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 personnel-action-btn personnel-action-btn--primary">保存绩效</button>
+                            <?php endif; ?>
+                            <a href="index.php?action=export_personnel_detail_performance&personnel_period=<?= e($personnelDetail['period']) ?>&personnel_date=<?= e($personnelDetail['anchor_date']) ?>&person_name=<?= urlencode($personnelDetail['person_name']) ?>" class="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 personnel-action-btn personnel-action-btn--accent">一键生成个人绩效</a>
+                            <a href="index.php?view=personnel&personnel_period=<?= e($personnelBoard['period']) ?>&personnel_date=<?= e($personnelBoard['anchor_date']) ?>#personnel" class="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50 personnel-action-btn personnel-action-btn--muted">关闭</a>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <?php if ($auth->can('manage_performance')): ?>
-                            <button type="submit" form="personnel-performance-form" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">保存绩效</button>
-                        <?php endif; ?>
-                        <a href="index.php?action=export_personnel_detail_performance&personnel_period=<?= e($personnelDetail['period']) ?>&personnel_date=<?= e($personnelDetail['anchor_date']) ?>&person_name=<?= urlencode($personnelDetail['person_name']) ?>" class="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700">一键生成个人绩效</a>
-                        <a href="index.php?view=personnel&personnel_period=<?= e($personnelBoard['period']) ?>&personnel_date=<?= e($personnelBoard['anchor_date']) ?>#personnel" class="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50">关闭</a>
+                    <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3 personnel-detail-summary">
+                        <div class="personnel-summary-card">
+                            <div class="personnel-summary-label">当前周期</div>
+                            <div class="personnel-summary-value text-slate-900"><?= e($personnelDetail['label']) ?></div>
+                        </div>
+                        <div class="personnel-summary-card">
+                            <div class="personnel-summary-label">活跃天数</div>
+                            <div class="personnel-summary-value text-slate-900"><?= e((string) $personnelDetail['active_days']) ?><span class="personnel-summary-unit">天</span></div>
+                        </div>
+                        <div class="personnel-summary-card personnel-summary-card--accent">
+                            <div class="personnel-summary-label">累计绩效</div>
+                            <div class="personnel-summary-value text-blue-700"><?= e($scoreLabel((float) $personnelDetail['total_score'])) ?></div>
+                        </div>
                     </div>
+                    <?php if ($auth->can('manage_performance')): ?>
+                        <p class="mt-4 text-xs text-blue-700 personnel-detail-note">管理员可按项目单独调整绩效分值，系统默认按开始结束时间折算每日绩效。</p>
+                    <?php endif; ?>
                 </div>
 
-                <form id="personnel-performance-form" method="post" class="px-6 py-6">
+                <form id="personnel-performance-form" method="post" class="px-6 py-6 personnel-detail-body">
                     <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="save_personnel_performance">
                     <input type="hidden" name="person_name" value="<?= e($personnelDetail['person_name']) ?>">
@@ -476,11 +514,11 @@ foreach ($users as $userItem) {
                     <input type="hidden" name="personnel_date" value="<?= e($personnelDetail['anchor_date']) ?>">
 
                     <?php foreach ($personnelDetail['calendar_groups'] as $group): ?>
-                        <div class="mb-8 last:mb-0">
-                            <div class="mb-4 flex items-center justify-between">
+                        <div class="mb-8 last:mb-0 personnel-calendar-group">
+                            <div class="mb-4 flex items-center justify-between personnel-group-head">
                                 <h4 class="text-lg font-semibold text-gray-900"><?= e($group['title']) ?></h4>
                             </div>
-                            <div class="grid grid-cols-7 gap-3 mb-3">
+                            <div class="hidden gap-3 mb-3 2xl:grid 2xl:grid-cols-7 personnel-weekdays">
                                 <?php foreach ($personnelWeekdays as $weekday): ?>
                                     <div class="rounded-lg bg-gray-100 px-3 py-2 text-center text-sm font-medium text-gray-600"><?= e($weekday) ?></div>
                                 <?php endforeach; ?>
@@ -488,45 +526,77 @@ foreach ($users as $userItem) {
 
                             <div class="<?= $group['compact'] ? 'space-y-3' : 'space-y-4' ?>">
                                 <?php foreach ($group['weeks'] as $week): ?>
-                                    <div class="grid grid-cols-1 gap-3 md:grid-cols-7">
+                                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7 personnel-week-grid">
                                         <?php foreach ($week as $cell): ?>
                                             <?php
                                             $isCurrentMonth = $cell['in_current_month'] ?? true;
-                                            $cellClass = $isCurrentMonth ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100';
-                                            $taskClass = $cell['has_task'] ? 'text-gray-700' : 'text-gray-400';
+                                            $cellClass = $isCurrentMonth ? 'personnel-day-card--current' : 'personnel-day-card--other';
+                                            $projectCount = count($cell['tasks']);
+                                            $dayTotalScore = 0.0;
+                                            foreach ($cell['tasks'] as $task) {
+                                                $dayTotalScore += (float) ($task['score'] ?? 0);
+                                            }
                                             ?>
-                                            <div class="min-h-[180px] rounded-2xl border p-4 <?= $cellClass ?>">
-                                                <div class="flex items-start justify-between gap-2">
-                                                    <div>
-                                                        <div class="text-sm font-semibold text-gray-900"><?= e($cell['month_number'] . '/' . $cell['day_number']) ?></div>
-                                                        <div class="text-xs text-gray-500"><?= e($cell['weekday']) ?></div>
+                                            <div class="rounded-2xl border p-4 personnel-day-card <?= $cellClass ?>">
+                                                <div class="personnel-day-head">
+                                                    <div class="personnel-day-meta">
+                                                        <div class="text-sm font-semibold text-gray-900 personnel-day-date"><?= e($cell['month_number'] . '/' . $cell['day_number']) ?></div>
+                                                        <div class="text-xs text-gray-500 personnel-day-weekday"><?= e($cell['weekday']) ?></div>
                                                     </div>
-                                                    <?php if ($cell['has_task']): ?>
-                                                        <span class="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">有项目</span>
-                                                    <?php else: ?>
-                                                        <span class="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500">无任务</span>
-                                                    <?php endif; ?>
+                                                    <div class="personnel-day-badges">
+                                                        <?php if ($cell['has_task']): ?>
+                                                            <span class="personnel-day-badge personnel-day-badge--busy"><?= e((string) $projectCount) ?> 个项目</span>
+                                                            <span class="personnel-day-badge personnel-day-badge--score">当日绩效 <?= e($scoreLabel($dayTotalScore)) ?></span>
+                                                        <?php else: ?>
+                                                            <span class="personnel-day-badge personnel-day-badge--idle">无任务</span>
+                                                        <?php endif; ?>
+                                                    </div>
                                                 </div>
 
-                                                <div class="mt-4 space-y-2 text-xs <?= $taskClass ?>">
+                                                <div class="mt-4 personnel-task-list">
                                                     <?php if ($cell['has_task']): ?>
-                                                        <?php foreach ($cell['tasks'] as $task): ?>
-                                                            <div class="rounded-xl bg-slate-50 px-3 py-2">
-                                                                <div class="font-semibold text-slate-700"><?= e($task['project_name']) ?></div>
-                                                                <div class="mt-1 text-slate-500"><?= e($task['task_summary']) ?></div>
+                                                        <?php foreach ($cell['tasks'] as $taskIndex => $task): ?>
+                                                            <div class="personnel-task-card">
+                                                                <div class="personnel-task-main">
+                                                                    <div class="min-w-0 flex-1 personnel-task-content">
+                                                                        <div class="personnel-task-field">
+                                                                            <div class="personnel-task-field-head">
+                                                                                <span class="personnel-task-field-label">项目名称</span>
+                                                                                <span class="personnel-task-order">项目 <?= e((string) ($taskIndex + 1)) ?></span>
+                                                                            </div>
+                                                                            <div class="personnel-task-title"><?= e($task['project_name']) ?></div>
+                                                                        </div>
+                                                                        <div class="personnel-task-field personnel-task-field--compact">
+                                                                            <div class="personnel-task-field-label">对口销售</div>
+                                                                            <div class="personnel-task-sales-text"><?= e((string) ($task['project_sales'] ?? '')) ?></div>
+                                                                        </div>
+                                                                        <div class="personnel-task-field personnel-task-field--summary">
+                                                                            <div class="personnel-task-field-label">工作内容</div>
+                                                                            <div class="personnel-task-summary"><?= e($task['task_summary']) ?></div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="personnel-task-score">
+                                                                        <div class="personnel-task-score-label">绩效</div>
+                                                                        <?php if ($auth->can('manage_performance')): ?>
+                                                                            <input
+                                                                                type="number"
+                                                                                step="0.1"
+                                                                                min="0"
+                                                                                name="scores[<?= e($cell['date']) ?>][<?= e((string) ($task['project_id'] ?? 0)) ?>]"
+                                                                                value="<?= e($scoreLabel((float) ($task['score'] ?? ($task['default_score'] ?? 0)))) ?>"
+                                                                                class="personnel-task-score-input"
+                                                                            >
+                                                                        <?php else: ?>
+                                                                            <div class="personnel-task-score-value">
+                                                                                <?= e($scoreLabel((float) ($task['score'] ?? ($task['default_score'] ?? 0)))) ?>
+                                                                            </div>
+                                                                        <?php endif; ?>
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         <?php endforeach; ?>
                                                     <?php else: ?>
-                                                        <div class="pt-6 text-center">当天没有项目安排</div>
-                                                    <?php endif; ?>
-                                                </div>
-
-                                                <div class="mt-4 border-t border-gray-100 pt-3">
-                                                    <div class="text-xs text-gray-500">绩效</div>
-                                                    <?php if ($auth->can('manage_performance') && $cell['has_task']): ?>
-                                                        <input type="number" step="0.1" min="0" name="scores[<?= e($cell['date']) ?>]" value="<?= e((string) $cell['score']) ?>" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                                    <?php else: ?>
-                                                        <div class="mt-2 text-xl font-bold text-blue-700"><?= e($scoreLabel((float) $cell['score'])) ?></div>
+                                                        <div class="personnel-empty-state">当天没有项目安排</div>
                                                     <?php endif; ?>
                                                 </div>
                                             </div>
@@ -545,25 +615,41 @@ foreach ($users as $userItem) {
 <section id="attendance-page" class="page-section <?= $view === 'attendance' ? '' : 'hidden' ?>">
     <div class="mb-6">
         <h2 class="text-2xl font-bold text-gray-900">出勤管理</h2>
-        <p class="text-gray-600 mt-1">根据项目安排自动生成本周出勤台账<?= $auth->can('manage_performance') ? '，管理员可手动调整为空闲或调休' : '' ?></p>
     </div>
     <div class="grid grid-cols-1 gap-8">
-        <div class="bg-white rounded-lg shadow p-6 border border-gray-100">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">本周出勤台账</h3>
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200" id="attendance-table">
+        <div class="bg-white rounded-lg shadow p-6 border border-gray-100 attendance-board-shell">
+            <div class="attendance-board-head">
+                <h3 class="text-lg font-semibold text-gray-900">本周出勤台账</h3>
+            </div>
+
+            <div class="overflow-x-auto attendance-board-wrap">
+                <table class="min-w-full divide-y divide-gray-200 attendance-board-table" id="attendance-table">
                     <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">人员 / 出勤</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">人员</th>
                         <?php foreach ($attendanceBoard['days'] as $day): ?>
-                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"><?= e($day['label']) ?></th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <div class="attendance-day-head">
+                                    <?php
+                                    $dayParts = explode(' ', (string) ($day['label'] ?? ''));
+                                    $dayDateLabel = $dayParts[0] ?? ($day['label'] ?? '');
+                                    $dayWeekLabel = $dayParts[1] ?? '';
+                                    ?>
+                                    <span class="attendance-day-date"><?= e((string) $dayDateLabel) ?></span>
+                                    <span class="attendance-day-week"><?= e((string) $dayWeekLabel) ?></span>
+                                </div>
+                            </th>
                         <?php endforeach; ?>
                     </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
                     <?php foreach ($attendanceBoard['rows'] as $row): ?>
                         <tr>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><?= e($row['name']) ?></td>
+                            <td class="px-6 py-4 align-top">
+                                <div class="attendance-person-card">
+                                    <div class="attendance-person-name"><?= e($row['name']) ?></div>
+                                </div>
+                            </td>
                             <?php foreach ($row['days'] as $cell): ?>
                                 <?php
                                 $statusClass = 'bg-green-100 text-green-800';
@@ -573,30 +659,58 @@ foreach ($users as $userItem) {
                                     $statusClass = 'bg-amber-100 text-amber-800';
                                 }
                                 ?>
-                                <td class="px-4 py-4 text-center align-top">
-                                    <?php if ($auth->can('manage_performance')): ?>
-                                        <form method="post" class="attendance-status-form">
-                                            <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
-                                            <input type="hidden" name="action" value="save_attendance_override">
-                                            <input type="hidden" name="person_name" value="<?= e($row['name']) ?>">
-                                            <input type="hidden" name="work_date" value="<?= e($cell['date']) ?>">
-                                            <details class="attendance-status-popover">
-                                                <summary class="attendance-status-trigger px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full <?= $statusClass ?>">
-                                                    <?= e($cell['text']) ?>
-                                                </summary>
-                                                <div class="attendance-status-menu">
-                                                    <button type="submit" name="attendance_status" value="" class="attendance-status-option <?= ($cell['override_status'] ?? '') === '' ? 'is-active' : '' ?>">
-                                                        自动
-                                                    </button>
-                                                    <button type="submit" name="attendance_status" value="rest" class="attendance-status-option <?= ($cell['override_status'] ?? '') === 'rest' ? 'is-active' : '' ?>">
-                                                        调休
-                                                    </button>
-                                                </div>
-                                            </details>
-                                        </form>
-                                    <?php else: ?>
-                                        <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full <?= $statusClass ?>"><?= e($cell['text']) ?></span>
-                                    <?php endif; ?>
+                                <td class="px-4 py-4 align-top">
+                                    <div class="attendance-cell-card attendance-cell-<?= e($cell['status']) ?> <?= !empty($cell['items']) && count($cell['items']) > 1 ? 'attendance-cell-multi' : '' ?>">
+                                        <div class="attendance-cell-head">
+                                            <?php if ($auth->can('manage_performance')): ?>
+                                                <form method="post" class="attendance-status-form">
+                                                    <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                                                    <input type="hidden" name="action" value="save_attendance_override">
+                                                    <input type="hidden" name="person_name" value="<?= e($row['name']) ?>">
+                                                    <input type="hidden" name="work_date" value="<?= e($cell['date']) ?>">
+                                                    <details class="attendance-status-popover">
+                                                        <summary class="attendance-status-trigger px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full <?= $statusClass ?>">
+                                                            <?= e($cell['text']) ?>
+                                                        </summary>
+                                                        <div class="attendance-status-menu">
+                                                            <button type="submit" name="attendance_status" value="" class="attendance-status-option <?= ($cell['override_status'] ?? '') === '' ? 'is-active' : '' ?>">
+                                                                自动
+                                                            </button>
+                                                            <button type="submit" name="attendance_status" value="rest" class="attendance-status-option <?= ($cell['override_status'] ?? '') === 'rest' ? 'is-active' : '' ?>">
+                                                                调休
+                                                            </button>
+                                                        </div>
+                                                    </details>
+                                                </form>
+                                            <?php else: ?>
+                                                <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full <?= $statusClass ?>"><?= e($cell['text']) ?></span>
+                                            <?php endif; ?>
+                                            <?php if (!empty($cell['items'])): ?>
+                                                <span class="attendance-cell-count"><?= e((string) count($cell['items'])) ?></span>
+                                            <?php endif; ?>
+                                        </div>
+
+                                        <?php if (!empty($cell['items'])): ?>
+                                            <div class="attendance-project-list">
+                                                <?php foreach ($cell['items'] as $projectItem): ?>
+                                                    <div class="attendance-project-item">
+                                                        <div class="attendance-project-line attendance-project-line-name">
+                                                            <span class="attendance-project-key">项目名称：</span>
+                                                            <span class="attendance-project-value attendance-project-name"><?= e((string) ($projectItem['project_name'] ?? '')) ?></span>
+                                                        </div>
+                                                        <div class="attendance-project-line attendance-project-line-task">
+                                                            <span class="attendance-project-key">工作内容：</span>
+                                                            <span class="attendance-project-value attendance-project-task"><?= e((string) ($projectItem['task_summary'] ?? '')) ?></span>
+                                                        </div>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="attendance-empty-note">
+                                                <?= e($cell['text']) ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             <?php endforeach; ?>
                         </tr>
@@ -780,8 +894,8 @@ foreach ($users as $userItem) {
                         <td class="px-4 py-4 text-sm text-slate-600">
                             <div class="report-support-person"><?= e($item['support_personnel']) ?></div>
                         </td>
-                        <td class="px-4 py-4 whitespace-nowrap text-sm text-slate-500"><?= e($item['start_date']) ?></td>
-                        <td class="px-4 py-4 whitespace-nowrap text-sm text-slate-500"><?= e($item['end_date']) ?></td>
+                        <td class="px-4 py-4 whitespace-nowrap text-sm text-slate-500"><?= e(format_datetime($item['start_at'] ?? $item['start_date'])) ?></td>
+                        <td class="px-4 py-4 whitespace-nowrap text-sm text-slate-500"><?= e(format_datetime($item['end_at'] ?? $item['end_date'])) ?></td>
                         <td class="px-4 py-4 text-sm text-slate-600">
                             <div class="report-feedback-text"><?= e($item['completion_feedback'] ?: '-') ?></div>
                         </td>
@@ -943,12 +1057,17 @@ foreach ($users as $userItem) {
                 </a>
             </div>
             <div class="px-6 py-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><div class="text-sm text-gray-500">项目类型</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e($previewingProject['project_type'] ?: '-') ?></div></div>
                 <div><div class="text-sm text-gray-500">项目名称</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e($previewingProject['project_name']) ?></div></div>
                 <div><div class="text-sm text-gray-500">项目区域</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e($previewingProject['project_region']) ?></div></div>
+                <div><div class="text-sm text-gray-500">项目重要程度</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e($previewingProject['project_priority'] ?: '普通') ?></div></div>
                 <div><div class="text-sm text-gray-500">项目销售</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e($previewingProject['project_sales']) ?></div></div>
+                <div><div class="text-sm text-gray-500">支撑事业部</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e($previewingProject['support_department'] ?: '-') ?></div></div>
                 <div><div class="text-sm text-gray-500">支撑岗位</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e($previewingProject['support_role']) ?></div></div>
                 <div><div class="text-sm text-gray-500">支撑人员</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e($previewingProject['support_personnel']) ?></div></div>
-                <div><div class="text-sm text-gray-500">开始 / 结束</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e($previewingProject['start_date']) ?> / <?= e($previewingProject['end_date']) ?></div></div>
+                <div><div class="text-sm text-gray-500">跨部门协调</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e($previewingProject['cross_department'] ?: '-') ?></div></div>
+                <div><div class="text-sm text-gray-500">开始 / 结束</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e(format_datetime($previewingProject['start_at'] ?? $previewingProject['start_date'])) ?> / <?= e(format_datetime($previewingProject['end_at'] ?? $previewingProject['end_date'])) ?></div></div>
+                <div><div class="text-sm text-gray-500">项目工时</div><div class="mt-1 text-sm font-medium text-gray-900"><?= e($numberLabel($previewingProject['project_hours'] ?? 0)) ?> 绩效</div></div>
                 <div class="md:col-span-2"><div class="text-sm text-gray-500">工作任务</div><div class="mt-1 text-sm leading-6 text-gray-900 whitespace-pre-wrap"><?= e($previewingProject['task_summary']) ?></div></div>
                 <div><div class="text-sm text-gray-500">反馈标签</div><div class="mt-1">
                     <?php
@@ -1005,6 +1124,10 @@ foreach ($users as $userItem) {
                 <input type="hidden" name="project_id" value="<?= e((string) $projectForm['id']) ?>">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">项目类型</label>
+                        <input type="text" name="project_type" value="<?= e($projectForm['project_type'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="如：本周计划 / 临时支撑">
+                    </div>
+                    <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">项目销售 <span class="text-red-500">*</span></label>
                         <input type="text" name="project_sales" value="<?= e($projectForm['project_sales']) ?>" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
                     </div>
@@ -1015,6 +1138,18 @@ foreach ($users as $userItem) {
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">项目区域 <span class="text-red-500">*</span></label>
                         <input type="text" name="project_region" value="<?= e($projectForm['project_region']) ?>" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">项目重要程度</label>
+                        <input type="text" name="project_priority" value="<?= e($projectForm['project_priority'] ?? '普通') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="普通 / 重要 / 紧急">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">支撑事业部</label>
+                        <input type="text" name="support_department" value="<?= e($projectForm['support_department'] ?? '技术支撑事业部') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">跨部门协调</label>
+                        <input type="text" name="cross_department" value="<?= e($projectForm['cross_department'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="无则留空">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">支撑岗位 <span class="text-red-500">*</span></label>
@@ -1029,17 +1164,17 @@ foreach ($users as $userItem) {
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">开始时间 <span class="text-red-500">*</span></label>
-                        <input type="date" name="start_date" value="<?= e($projectForm['start_date']) ?>" data-duration-start class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
-                        <p class="text-xs text-gray-500 mt-1"><?= e($weekdayOf($projectForm['start_date'])) ?></p>
+                        <input type="datetime-local" name="start_at" value="<?= e(format_datetime_local($projectForm['start_at'] ?? (($projectForm['start_date'] ?? '') !== '' ? ($projectForm['start_date'] . ' 09:00:00') : ''))) ?>" data-duration-start class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                        <p class="text-xs text-gray-500 mt-1"><?= e($weekdayOf($datePartOf($projectForm['start_at'] ?? $projectForm['start_date']))) ?></p>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">结束时间 <span class="text-red-500">*</span></label>
-                        <input type="date" name="end_date" value="<?= e($projectForm['end_date']) ?>" data-duration-end class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
-                        <p class="text-xs text-gray-500 mt-1"><?= e($weekdayOf($projectForm['end_date'])) ?></p>
+                        <input type="datetime-local" name="end_at" value="<?= e(format_datetime_local($projectForm['end_at'] ?? (($projectForm['end_date'] ?? '') !== '' ? ($projectForm['end_date'] . ' 18:00:00') : ''))) ?>" data-duration-end class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                        <p class="text-xs text-gray-500 mt-1"><?= e($weekdayOf($datePartOf($projectForm['end_at'] ?? $projectForm['end_date']))) ?></p>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">工期总天数</label>
-                        <input type="text" value="<?= e((string) (((strtotime($projectForm['end_date']) - strtotime($projectForm['start_date'])) / 86400) + 1)) ?>" data-duration-output class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50" readonly>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">项目工时</label>
+                        <input type="text" value="<?= e($numberLabel($projectForm['project_hours'] ?? 0)) ?>" data-duration-output class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50" readonly>
                     </div>
                     <div class="md:col-span-3">
                         <label class="block text-sm font-medium text-gray-700 mb-1">工作任务简介 <span class="text-red-500">*</span></label>

@@ -10,75 +10,69 @@ final class ExcelExporter
     {
         $sharedStrings = [];
         $stringIndex = [];
-        $feedbackTagOptions = ProjectService::feedbackTagOptions();
+        $statusOptions = ProjectService::statusOptions();
 
         $columns = [
-            ['title' => '序号', 'width' => 5.75],
-            ['title' => '项目区域', 'width' => 9.75],
-            ['title' => '项目名称', 'width' => 19.25],
-            ['title' => '项目销售', 'width' => 9.625],
-            ['title' => '支撑岗位', 'width' => 10.75],
-            ['title' => '支撑人员', 'width' => 10.75],
-            ['title' => '开始时间', 'width' => 10.5],
-            ['title' => '结束时间', 'width' => 14.25],
-            ['title' => '工作任务【简述】', 'width' => 18.625],
-            ['title' => '技术完成回执单', 'width' => 38.5],
-            ['title' => '反馈标签', 'width' => 12.5],
-            ['title' => '完成评价【销售反馈简述】', 'width' => 27.5],
+            ['title' => '项目类型', 'width' => 11],
+            ['title' => '序号', 'width' => 7],
+            ['title' => '项目区域', 'width' => 12],
+            ['title' => '项目名称', 'width' => 36],
+            ['title' => '项目重要程度', 'width' => 12],
+            ['title' => '项目销售', 'width' => 12],
+            ['title' => '支撑事业部', 'width' => 15],
+            ['title' => '跨部门协调', 'width' => 12],
+            ['title' => '支撑岗位', 'width' => 11],
+            ['title' => '支撑人员', 'width' => 12],
+            ['title' => '开始时间', 'width' => 21],
+            ['title' => '结束时间', 'width' => 21],
+            ['title' => '项目工时', 'width' => 11],
+            ['title' => '工作任务【简述】', 'width' => 32],
+            ['title' => '标签', 'width' => 14],
+            ['title' => '技术完成回执单', 'width' => 24],
+            ['title' => '完成评价【销售反馈简述】', 'width' => 28],
         ];
 
         $rows = [];
-        $rows[] = $this->buildRow(1, [
-            $this->stringCell('A1', '技术支撑事业部项目管理平台', 13, $sharedStrings, $stringIndex),
-            $this->emptyCell('B1', 13),
-            $this->emptyCell('C1', 13),
-            $this->emptyCell('D1', 13),
-            $this->emptyCell('E1', 13),
-            $this->emptyCell('F1', 13),
-            $this->emptyCell('G1', 13),
-            $this->emptyCell('H1', 13),
-            $this->emptyCell('I1', 13),
-            $this->emptyCell('J1', 13),
-            $this->emptyCell('K1', 13),
-            $this->emptyCell('L1', 13),
-        ], 26.25);
-
         $headerCells = [];
         foreach ($columns as $index => $column) {
-            $ref = chr(65 + $index) . '2';
-            $style = $index >= 8 ? 2 : 1;
-            if ($index === 10 || $index === 11) {
-                $style = 12;
-            }
-            $headerCells[] = $this->stringCell($ref, $column['title'], $style, $sharedStrings, $stringIndex);
+            $headerCells[] = $this->stringCell(
+                $this->cellRef($index, 1),
+                $column['title'],
+                1,
+                $sharedStrings,
+                $stringIndex
+            );
         }
-        $rows[] = $this->buildRow(2, $headerCells);
+        $rows[] = $this->buildRow(1, $headerCells, 24.0);
 
-        $line = 3;
-        foreach ($projects as $project) {
-            $feedbackKey = (string) ($project['feedback_tag'] ?? ProjectService::FEEDBACK_NORMAL);
-            $feedbackLabel = $feedbackTagOptions[$feedbackKey] ?? $feedbackTagOptions[ProjectService::FEEDBACK_NORMAL];
+        $line = 2;
+        foreach ($projects as $index => $project) {
+            $statusKey = (string) ($project['work_order_status'] ?? ProjectService::STATUS_SALES_TASK);
+            $statusLabel = $statusOptions[$statusKey] ?? $statusOptions[ProjectService::STATUS_SALES_TASK];
             $cells = [
-                $this->numberCell('A' . $line, (string) ($line - 2), 9),
-                $this->stringCell('B' . $line, (string) $project['project_region'], 9, $sharedStrings, $stringIndex),
-                $this->stringCell('C' . $line, (string) $project['project_name'], 9, $sharedStrings, $stringIndex),
-                $this->stringCell('D' . $line, (string) $project['project_sales'], 9, $sharedStrings, $stringIndex),
-                $this->stringCell('E' . $line, (string) $project['support_role'], 11, $sharedStrings, $stringIndex),
-                $this->stringCell('F' . $line, (string) $project['support_personnel'], 11, $sharedStrings, $stringIndex),
-                $this->stringCell('G' . $line, date('Y.n.j', strtotime($project['start_date'])), 10, $sharedStrings, $stringIndex),
-                $this->stringCell('H' . $line, date('Y.n.j', strtotime($project['end_date'])), 10, $sharedStrings, $stringIndex),
-                $this->stringCell('I' . $line, (string) $project['task_summary'], 6, $sharedStrings, $stringIndex),
-                $this->stringCell('J' . $line, (string) ($project['receipt_name'] ?? ''), 3, $sharedStrings, $stringIndex),
-                $this->stringCell('K' . $line, (string) $feedbackLabel, 11, $sharedStrings, $stringIndex),
-                $this->stringCell('L' . $line, (string) ($project['completion_feedback'] ?? ''), 4, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(0, $line), (string) ($project['project_type'] ?? ''), 2, $sharedStrings, $stringIndex),
+                $this->numberCell($this->cellRef(1, $line), (string) ($index + 1), 3),
+                $this->stringCell($this->cellRef(2, $line), (string) ($project['project_region'] ?? ''), 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(3, $line), (string) ($project['project_name'] ?? ''), 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(4, $line), (string) ($project['project_priority'] ?? '普通'), 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(5, $line), (string) ($project['project_sales'] ?? ''), 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(6, $line), (string) ($project['support_department'] ?? '技术支撑事业部'), 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(7, $line), (string) ($project['cross_department'] ?? ''), 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(8, $line), (string) ($project['support_role'] ?? ''), 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(9, $line), (string) ($project['support_personnel'] ?? ''), 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(10, $line), $this->datetimeValue((string) ($project['start_at'] ?? '')), 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(11, $line), $this->datetimeValue((string) ($project['end_at'] ?? '')), 2, $sharedStrings, $stringIndex),
+                $this->numberCell($this->cellRef(12, $line), $this->workloadValue($project['project_hours'] ?? 0), 3),
+                $this->stringCell($this->cellRef(13, $line), (string) ($project['task_summary'] ?? ''), 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(14, $line), $statusLabel, 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(15, $line), (string) ($project['receipt_name'] ?? ''), 2, $sharedStrings, $stringIndex),
+                $this->stringCell($this->cellRef(16, $line), (string) ($project['completion_feedback'] ?? ''), 2, $sharedStrings, $stringIndex),
             ];
 
-            $rows[] = $this->buildRow($line, $cells, $this->rowHeight($project, $feedbackLabel));
+            $rows[] = $this->buildRow($line, $cells, $this->rowHeight($project));
             $line++;
         }
 
-        $sheetXml = $this->sheetXml($rows, $columns);
-        $sharedXml = $this->sharedStringsXml($sharedStrings);
         $zip = new ZipBuilder();
         $zip->add('[Content_Types].xml', $this->contentTypesXml());
         $zip->add('_rels/.rels', $this->rootRelsXml());
@@ -86,10 +80,9 @@ final class ExcelExporter
         $zip->add('docProps/core.xml', $this->coreXml());
         $zip->add('xl/workbook.xml', $this->workbookXml());
         $zip->add('xl/_rels/workbook.xml.rels', $this->workbookRelsXml());
-        $zip->add('xl/worksheets/sheet1.xml', $sheetXml);
+        $zip->add('xl/worksheets/sheet1.xml', $this->sheetXml($rows, $columns));
         $zip->add('xl/styles.xml', $this->stylesXml());
-        $zip->add('xl/sharedStrings.xml', $sharedXml);
-        $zip->add('xl/theme/theme1.xml', $this->themeXml());
+        $zip->add('xl/sharedStrings.xml', $this->sharedStringsXml($sharedStrings));
 
         $filename = 'project_plan_' . date('Ymd_His') . '.xlsx';
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -98,27 +91,54 @@ final class ExcelExporter
         exit;
     }
 
-    private function rowHeight(array $project, string $feedbackLabel): float
+    private function rowHeight(array $project): float
     {
+        $length = static function (string $value): int {
+            return function_exists('mb_strlen') ? mb_strlen($value) : strlen($value);
+        };
+
         $maxLength = max(
-            strlen((string) $project['task_summary']),
-            strlen((string) ($project['receipt_name'] ?? '')),
-            strlen((string) ($project['completion_feedback'] ?? '')),
-            strlen($feedbackLabel)
+            $length((string) ($project['project_name'] ?? '')),
+            $length((string) ($project['task_summary'] ?? '')),
+            $length((string) ($project['completion_feedback'] ?? ''))
         );
 
-        return $maxLength > 60 ? 58.0 : 39.95;
+        return $maxLength > 60 ? 56.0 : 36.0;
     }
 
-    private function buildRow(int $index, array $cells, ?float $height = null): string
+    private function datetimeValue(string $value): string
     {
-        $attributes = sprintf('r="%d" spans="1:12"', $index);
-        if ($height !== null) {
-            $attributes .= sprintf(' ht="%.2f" customHeight="1"', $height);
-        }
-        $attributes .= ' x14ac:dyDescent="0.15"';
+        $value = normalize_datetime_value($value);
+        return $value !== '' ? $value : '';
+    }
 
-        return '<row ' . $attributes . '>' . implode('', $cells) . '</row>';
+    private function workloadValue($value): string
+    {
+        $number = round((float) $value, 2);
+        return rtrim(rtrim(number_format($number, 2, '.', ''), '0'), '.');
+    }
+
+    private function buildRow(int $index, array $cells, float $height): string
+    {
+        return sprintf(
+            '<row r="%d" spans="1:17" ht="%.2f" customHeight="1" x14ac:dyDescent="0.15">%s</row>',
+            $index,
+            $height,
+            implode('', $cells)
+        );
+    }
+
+    private function cellRef(int $columnIndex, int $rowIndex): string
+    {
+        $columnIndex++;
+        $letters = '';
+        while ($columnIndex > 0) {
+            $mod = ($columnIndex - 1) % 26;
+            $letters = chr(65 + $mod) . $letters;
+            $columnIndex = (int) floor(($columnIndex - 1) / 26);
+        }
+
+        return $letters . $rowIndex;
     }
 
     private function stringCell(string $ref, string $value, int $style, array &$sharedStrings, array &$stringIndex): string
@@ -136,28 +156,15 @@ final class ExcelExporter
         return sprintf('<c r="%s" s="%d"><v>%s</v></c>', $ref, $style, $value);
     }
 
-    private function emptyCell(string $ref, int $style): string
-    {
-        return sprintf('<c r="%s" s="%d" />', $ref, $style);
-    }
-
     private function sheetXml(array $rows, array $columns): string
     {
         $colsXml = '';
         foreach ($columns as $index => $column) {
-            $style = 5;
-            if ($index <= 2) {
-                $style = 7;
-            }
-            if ($index === 6 || $index === 7) {
-                $style = 8;
-            }
-            $min = $index + 1;
-            $max = $index + 1;
+            $style = $index === 1 || $index === 12 ? 3 : 2;
             $colsXml .= sprintf(
                 '<col min="%d" max="%d" width="%s" style="%d" customWidth="1"/>',
-                $min,
-                $max,
+                $index + 1,
+                $index + 1,
                 $column['width'],
                 $style
             );
@@ -167,12 +174,11 @@ final class ExcelExporter
             . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
             . 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
             . 'xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac">'
-            . '<sheetPr/><dimension ref="A1:L' . count($rows) . '"/>'
+            . '<dimension ref="A1:Q' . count($rows) . '"/>'
             . '<sheetViews><sheetView workbookViewId="0"/></sheetViews>'
-            . '<sheetFormatPr defaultRowHeight="15" x14ac:dyDescent="0.15"/>'
+            . '<sheetFormatPr defaultRowHeight="18" x14ac:dyDescent="0.15"/>'
             . '<cols>' . $colsXml . '</cols>'
             . '<sheetData>' . implode('', $rows) . '</sheetData>'
-            . '<mergeCells count="1"><mergeCell ref="A1:L1"/></mergeCells>'
             . '</worksheet>';
     }
 
@@ -197,7 +203,6 @@ final class ExcelExporter
             . '<Default Extension="xml" ContentType="application/xml"/>'
             . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
             . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-            . '<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>'
             . '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
             . '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
             . '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
@@ -229,6 +234,7 @@ final class ExcelExporter
     private function coreXml(): string
     {
         $created = gmdate('Y-m-d\TH:i:s\Z');
+
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
             . '<dc:creator>Codex</dc:creator><cp:lastModifiedBy>Codex</cp:lastModifiedBy>'
@@ -241,7 +247,8 @@ final class ExcelExporter
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-            . '<sheets><sheet name="项目计划" sheetId="1" r:id="rId1"/></sheets></workbook>';
+            . '<sheets><sheet name="项目计划" sheetId="1" r:id="rId1"/></sheets>'
+            . '</workbook>';
     }
 
     private function workbookRelsXml(): string
@@ -250,8 +257,7 @@ final class ExcelExporter
             . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
             . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
-            . '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>'
-            . '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>'
+            . '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>'
             . '</Relationships>';
     }
 
@@ -259,38 +265,27 @@ final class ExcelExporter
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            . '<fonts count="3">'
-            . '<font><sz val="11"/><name val="Calibri"/></font>'
-            . '<font><b/><sz val="11"/><name val="Calibri"/></font>'
-            . '<font><b/><sz val="16"/><name val="Calibri"/></font>'
+            . '<fonts count="2">'
+            . '<font><sz val="11"/><name val="Microsoft YaHei"/></font>'
+            . '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Microsoft YaHei"/></font>'
             . '</fonts>'
-            . '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDBEAFE"/><bgColor indexed="64"/></patternFill></fill></fills>'
-            . '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders>'
+            . '<fills count="3">'
+            . '<fill><patternFill patternType="none"/></fill>'
+            . '<fill><patternFill patternType="gray125"/></fill>'
+            . '<fill><patternFill patternType="solid"><fgColor rgb="FF2563EB"/><bgColor indexed="64"/></patternFill></fill>'
+            . '</fills>'
+            . '<borders count="2">'
+            . '<border><left/><right/><top/><bottom/><diagonal/></border>'
+            . '<border><left style="thin"><color rgb="FFD1D5DB"/></left><right style="thin"><color rgb="FFD1D5DB"/></right><top style="thin"><color rgb="FFD1D5DB"/></top><bottom style="thin"><color rgb="FFD1D5DB"/></bottom><diagonal/></border>'
+            . '</borders>'
             . '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-            . '<cellXfs count="14">'
-            . '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
-            . '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
-            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
-            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>'
-            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>'
-            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
-            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>'
-            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
-            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
-            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
-            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
-            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
-            . '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
-            . '<xf numFmtId="0" fontId="2" fillId="0" borderId="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+            . '<cellXfs count="4">'
+            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+            . '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
             . '</cellXfs>'
             . '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
             . '</styleSheet>';
-    }
-
-    private function themeXml(): string
-    {
-        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme">'
-            . '<a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F497D"/></a:dk2><a:lt2><a:srgbClr val="EEECE1"/></a:lt2><a:accent1><a:srgbClr val="4F81BD"/></a:accent1><a:accent2><a:srgbClr val="C0504D"/></a:accent2><a:accent3><a:srgbClr val="9BBB59"/></a:accent3><a:accent4><a:srgbClr val="8064A2"/></a:accent4><a:accent5><a:srgbClr val="4BACC6"/></a:accent5><a:accent6><a:srgbClr val="F79646"/></a:accent6><a:hlink><a:srgbClr val="0000FF"/></a:hlink><a:folHlink><a:srgbClr val="800080"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont><a:latin typeface="Calibri"/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/></a:minorFont></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst/><a:lnStyleLst/><a:effectStyleLst/><a:bgFillStyleLst/></a:fmtScheme></a:themeElements></a:theme>';
     }
 }

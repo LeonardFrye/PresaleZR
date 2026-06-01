@@ -131,6 +131,15 @@ function format_datetime(?string $value): string
     return date('Y-m-d H:i', strtotime($value));
 }
 
+function format_datetime_local(?string $value): string
+{
+    if (!$value) {
+        return '';
+    }
+
+    return date('Y-m-d\TH:i', strtotime($value));
+}
+
 function format_bytes(int $size): string
 {
     $units = ['B', 'KB', 'MB', 'GB'];
@@ -184,6 +193,106 @@ function week_range(?string $pivot = null): array
 function in_date_range(string $target, string $start, string $end): bool
 {
     return strtotime($target) >= strtotime($start) && strtotime($target) <= strtotime($end);
+}
+
+function normalize_datetime_value(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    $value = str_replace('T', ' ', $value);
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1) {
+        $value .= ' 09:00:00';
+    }
+    if (preg_match('/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$/', $value) === 1) {
+        $value .= ':00';
+    }
+
+    $timestamp = strtotime($value);
+    if ($timestamp === false) {
+        return '';
+    }
+
+    return date('Y-m-d H:i:s', $timestamp);
+}
+
+function project_workday_minutes(string $startAt, string $endAt): int
+{
+    $startAt = normalize_datetime_value($startAt);
+    $endAt = normalize_datetime_value($endAt);
+    if ($startAt === '' || $endAt === '') {
+        return 0;
+    }
+
+    $start = new DateTimeImmutable($startAt);
+    $end = new DateTimeImmutable($endAt);
+    if ($end <= $start) {
+        return 0;
+    }
+
+    $minutes = 0;
+    $currentDate = $start->setTime(0, 0, 0);
+    $lastDate = $end->setTime(0, 0, 0);
+    $windows = [
+        ['09:00:00', '12:00:00'],
+        ['13:00:00', '18:00:00'],
+    ];
+
+    while ($currentDate <= $lastDate) {
+        $date = $currentDate->format('Y-m-d');
+        foreach ($windows as [$windowStartTime, $windowEndTime]) {
+            $windowStart = new DateTimeImmutable($date . ' ' . $windowStartTime);
+            $windowEnd = new DateTimeImmutable($date . ' ' . $windowEndTime);
+            $effectiveStart = $start > $windowStart ? $start : $windowStart;
+            $effectiveEnd = $end < $windowEnd ? $end : $windowEnd;
+
+            if ($effectiveEnd > $effectiveStart) {
+                $minutes += (int) floor(($effectiveEnd->getTimestamp() - $effectiveStart->getTimestamp()) / 60);
+            }
+        }
+
+        $currentDate = $currentDate->modify('+1 day');
+    }
+
+    return $minutes;
+}
+
+function project_workload_score(string $startAt, string $endAt): float
+{
+    return round(project_workday_minutes($startAt, $endAt) / 480, 2);
+}
+
+function project_daily_workload_scores(string $startAt, string $endAt): array
+{
+    $startAt = normalize_datetime_value($startAt);
+    $endAt = normalize_datetime_value($endAt);
+    if ($startAt === '' || $endAt === '') {
+        return [];
+    }
+
+    $start = new DateTimeImmutable($startAt);
+    $end = new DateTimeImmutable($endAt);
+    if ($end <= $start) {
+        return [];
+    }
+
+    $scores = [];
+    $currentDate = $start->setTime(0, 0, 0);
+    $lastDate = $end->setTime(0, 0, 0);
+
+    while ($currentDate <= $lastDate) {
+        $date = $currentDate->format('Y-m-d');
+        $dayStart = $date . ' 00:00:00';
+        $dayEnd = $date . ' 23:59:59';
+        $effectiveStart = $startAt > $dayStart ? $startAt : $dayStart;
+        $effectiveEnd = $endAt < $dayEnd ? $endAt : $dayEnd;
+        $scores[$date] = round(project_workday_minutes($effectiveStart, $effectiveEnd) / 480, 2);
+        $currentDate = $currentDate->modify('+1 day');
+    }
+
+    return $scores;
 }
 
 function permission_denied(): void

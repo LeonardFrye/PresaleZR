@@ -227,12 +227,97 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    const projectTableRows = Array.from(document.querySelectorAll('[data-project-row-toggle]'));
+    const projectActionRows = Array.from(document.querySelectorAll('[data-project-action-row]'));
+
+    function closeProjectActionRows() {
+        projectTableRows.forEach((row) => {
+            row.classList.remove('is-active');
+        });
+        projectActionRows.forEach((row) => {
+            row.classList.add('hidden');
+        });
+    }
+
+    projectTableRows.forEach((row) => {
+        row.addEventListener('click', function (event) {
+            if (event.target.closest('a, button, input, select, textarea, label, form')) {
+                return;
+            }
+
+            const targetId = row.getAttribute('data-project-row-toggle');
+            if (!targetId) {
+                return;
+            }
+
+            const actionRow = document.querySelector(`[data-project-action-row="${targetId}"]`);
+            if (!actionRow) {
+                return;
+            }
+
+            const willOpen = actionRow.classList.contains('hidden');
+            closeProjectActionRows();
+
+            if (willOpen) {
+                row.classList.add('is-active');
+                actionRow.classList.remove('hidden');
+            }
+        });
+    });
+
+    document.addEventListener('click', function (event) {
+        if (event.target.closest('[data-project-row-toggle], [data-project-action-row]')) {
+            return;
+        }
+
+        closeProjectActionRows();
+    });
+
     const selectAllProjects = document.getElementById('projects-select-all');
     const projectCheckboxes = Array.from(document.querySelectorAll('.project-row-checkbox'));
     const selectedCount = document.getElementById('project-selected-count');
     const batchForm = document.getElementById('project-batch-form');
     const batchAction = document.getElementById('project-batch-action');
     const batchSubmit = document.getElementById('project-batch-submit');
+    const batchSubmitBaseClasses = ['border-slate-300', 'text-slate-700', 'hover:bg-slate-50'];
+    const batchSubmitDeleteClasses = ['border-red-200', 'text-red-700', 'hover:bg-red-50'];
+    const batchSubmitExportClasses = ['border-blue-200', 'text-blue-700', 'hover:bg-blue-50'];
+
+    function getBatchActionValue() {
+        const field = batchForm?.elements?.namedItem('batch_action');
+        if (field && 'value' in field) {
+            return String(field.value || '').trim();
+        }
+
+        return batchAction ? String(batchAction.value || '').trim() : '';
+    }
+
+    function syncBatchSubmitPresentation() {
+        if (!batchSubmit) {
+            return;
+        }
+
+        batchSubmit.classList.remove(
+            ...batchSubmitBaseClasses,
+            ...batchSubmitDeleteClasses,
+            ...batchSubmitExportClasses
+        );
+
+        const action = getBatchActionValue();
+        if (action === 'delete') {
+            batchSubmit.textContent = '删除所选';
+            batchSubmit.classList.add(...batchSubmitDeleteClasses);
+            return;
+        }
+        if (action === 'export') {
+            batchSubmit.textContent = '导出所选';
+            batchSubmit.classList.add(...batchSubmitExportClasses);
+            return;
+        }
+
+        batchSubmit.textContent = '执行';
+        batchSubmit.classList.add(...batchSubmitBaseClasses);
+    }
 
     function syncProjectSelectionState() {
         const checkedCount = projectCheckboxes.filter((checkbox) => checkbox.checked).length;
@@ -246,6 +331,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if (batchSubmit) {
             batchSubmit.disabled = checkedCount === 0;
         }
+
+        syncBatchSubmitPresentation();
     }
 
     if (selectAllProjects) {
@@ -260,6 +347,9 @@ document.addEventListener('DOMContentLoaded', function () {
     projectCheckboxes.forEach((checkbox) => {
         checkbox.addEventListener('change', syncProjectSelectionState);
     });
+    if (batchAction) {
+        batchAction.addEventListener('change', syncBatchSubmitPresentation);
+    }
     syncProjectSelectionState();
 
     if (batchForm) {
@@ -273,16 +363,19 @@ document.addEventListener('DOMContentLoaded', function () {
             event.stopImmediatePropagation();
 
             const checkedCount = projectCheckboxes.filter((checkbox) => checkbox.checked).length;
+            const action = getBatchActionValue();
             if (checkedCount === 0) {
                 window.alert('请先选择要操作的项目');
                 return;
             }
-            if (!batchAction || batchAction.value !== 'delete') {
+            if (action === '') {
                 window.alert('请选择批量操作');
                 return;
             }
-            if (!window.confirm(`确认删除选中的 ${checkedCount} 个项目吗？`)) {
-                return;
+            if (action === 'delete') {
+                if (!window.confirm(`确认删除选中的 ${checkedCount} 个项目吗？`)) {
+                    return;
+                }
             }
 
             batchForm.dataset.nativeSubmitting = '1';
@@ -302,7 +395,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
         const visibleColumns = projectColumnCheckboxes.filter((checkbox) => checkbox.checked).length;
-        projectEmptyCell.colSpan = visibleColumns + 2;
+        projectEmptyCell.colSpan = visibleColumns + (selectAllProjects ? 1 : 0);
     }
 
     function applyProjectColumnVisibility() {
@@ -371,14 +464,47 @@ document.addEventListener('DOMContentLoaded', function () {
     const startInput = document.querySelector('[data-duration-start]');
     const endInput = document.querySelector('[data-duration-end]');
     const output = document.querySelector('[data-duration-output]');
+    const projectWorkload = function (startValue, endValue) {
+        if (!startValue || !endValue) {
+            return 0;
+        }
+
+        const start = new Date(startValue);
+        const end = new Date(endValue);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+            return 0;
+        }
+
+        let minutes = 0;
+        const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0, 0);
+        const last = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 0, 0, 0, 0);
+        const windows = [
+            [9, 0, 12, 0],
+            [13, 0, 18, 0],
+        ];
+
+        while (cursor <= last) {
+            for (const [startHour, startMinute, endHour, endMinute] of windows) {
+                const windowStart = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate(), startHour, startMinute, 0, 0);
+                const windowEnd = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate(), endHour, endMinute, 0, 0);
+                const effectiveStart = start > windowStart ? start : windowStart;
+                const effectiveEnd = end < windowEnd ? end : windowEnd;
+                if (effectiveEnd > effectiveStart) {
+                    minutes += Math.floor((effectiveEnd - effectiveStart) / 60000);
+                }
+            }
+
+            cursor.setDate(cursor.getDate() + 1);
+        }
+
+        return Math.round((minutes / 480) * 100) / 100;
+    };
     const updateDuration = function () {
         if (!startInput || !endInput || !output || !startInput.value || !endInput.value) {
             return;
         }
-        const start = new Date(startInput.value);
-        const end = new Date(endInput.value);
-        const diff = Math.floor((end - start) / 86400000) + 1;
-        output.value = diff > 0 ? diff : 0;
+        const workload = projectWorkload(startInput.value, endInput.value);
+        output.value = Number.isInteger(workload) ? String(workload) : workload.toFixed(2).replace(/\.?0+$/, '');
     };
     if (startInput && endInput) {
         startInput.addEventListener('change', updateDuration);

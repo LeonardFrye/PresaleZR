@@ -196,7 +196,7 @@ if (is_post()) {
             }
 
             flash('success', '项目保存成功。');
-            redirect('index.php?view=projects&edit=' . $projectId . '#projects');
+            redirect('index.php?view=projects#projects');
         }
 
         if ($action === 'delete_project') {
@@ -209,11 +209,12 @@ if (is_post()) {
             redirect(build_projects_url(project_filters_from_request($_POST)));
         }
 
-        if ($action === 'batch_delete_projects') {
+        if ($action === 'batch_projects') {
             if (!$auth->can('manage_projects')) {
                 permission_denied();
             }
-            if (trim((string) ($_POST['batch_action'] ?? '')) !== 'delete') {
+            $batchAction = trim((string) ($_POST['batch_action'] ?? ''));
+            if (!in_array($batchAction, ['delete', 'export'], true)) {
                 throw new RuntimeException('请选择有效的批量操作。');
             }
 
@@ -226,9 +227,26 @@ if (is_post()) {
                 throw new RuntimeException('请至少选择一个项目。');
             }
 
-            $deletedCount = $projectService->bulkDelete($selectedIds, $currentUser, $clientIp);
-            flash('success', sprintf('已删除 %d 个项目。', $deletedCount));
-            redirect(build_projects_url(project_filters_from_request($_POST)));
+            if ($batchAction === 'delete') {
+                $deletedCount = $projectService->bulkDelete($selectedIds, $currentUser, $clientIp);
+                flash('success', sprintf('已删除 %d 个项目。', $deletedCount));
+                redirect(build_projects_url(project_filters_from_request($_POST)));
+            }
+
+            if (!$auth->can('export_reports')) {
+                permission_denied();
+            }
+
+            $projects = $projectService->listByIds($selectedIds);
+            if ($projects === []) {
+                throw new RuntimeException('未找到可导出的项目数据。');
+            }
+
+            $auth->log((int) $currentUser['id'], 'export', 'projects', '批量导出项目', $clientIp, [
+                'project_ids' => $selectedIds,
+                'count' => count($projects),
+            ]);
+            (new ExcelExporter())->download($projects);
         }
 
         if ($action === 'import_projects') {

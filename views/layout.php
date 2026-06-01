@@ -41,7 +41,7 @@ $userInitial = isset($currentUser)
                     <div class="ml-4 flex items-center text-left">
                         <i class="fas fa-project-diagram text-blue-600 text-2xl mr-3"></i>
                         <div>
-                            <h1 class="text-xl font-bold text-gray-900"><?= e(app_config('app_name')) ?> V1.3</h1>
+                            <h1 class="text-xl font-bold text-gray-900"><?= e(app_config('app_name')) ?> V2.0</h1>
                         </div>
                     </div>
                 </div>
@@ -70,9 +70,9 @@ $userInitial = isset($currentUser)
                     <?php
                     $navItems = [
                         'dashboard' => ['label' => '数据概览', 'permission' => null],
+                        'attendance' => ['label' => '出勤管理', 'permission' => 'view_attendance'],
                         'projects' => ['label' => '项目管理', 'permission' => 'view_projects'],
                         'personnel' => ['label' => '人员绩效', 'permission' => 'view_personnel'],
-                        'attendance' => ['label' => '出勤管理', 'permission' => 'view_attendance'],
                         'documents' => ['label' => '项目文件', 'permission' => 'manage_documents'],
                         'reports' => ['label' => '统计报表', 'permission' => 'view_reports'],
                     ];

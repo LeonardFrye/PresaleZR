@@ -27,7 +27,7 @@ final class AnalyticsService
         $sales = [];
         $monthly = [];
         $gantt = [];
-        $hours = 0;
+        $hours = 0.0;
         $completionCount = 0;
         $transferCount = 0;
         $ongoingCount = 0;
@@ -37,12 +37,12 @@ final class AnalyticsService
             $regions[$project['project_region']] = ($regions[$project['project_region']] ?? 0) + 1;
             $roles[$project['support_role']] = ($roles[$project['support_role']] ?? 0) + 1;
             $sales[$project['project_sales']] = ($sales[$project['project_sales']] ?? 0) + 1;
-            $month = date('Y-m', strtotime($project['start_date']));
+            $month = date('Y-m', strtotime((string) $project['start_date']));
             $monthly[$month] = ($monthly[$month] ?? 0) + 1;
-            $hours += (int) $project['duration_days'] * 8;
+            $hours += (float) ($project['project_hours'] ?? 0) * 8;
             $completionCount += (int) $project['completion_flag'];
             $transferCount += (int) $project['transfer_flag'];
-            if (in_date_range($today, $project['start_date'], $project['end_date'])) {
+            if (in_date_range($today, (string) $project['start_date'], (string) $project['end_date'])) {
                 $ongoingCount++;
             }
             $gantt[] = [
@@ -65,7 +65,7 @@ final class AnalyticsService
         return [
             'metrics' => [
                 'total_projects' => $totalProjects,
-                'total_hours' => $hours,
+                'total_hours' => round($hours, 1),
                 'total_days' => round($hours / 8, 1),
                 'avg_days' => $totalProjects > 0 ? round(array_sum(array_column($projects, 'duration_days')) / $totalProjects, 1) : 0,
                 'attendance_rate' => $attendance['attendance_rate'],
@@ -107,12 +107,17 @@ final class AnalyticsService
                     'load_days' => 0,
                     'conflict_days' => 0,
                 ];
+
                 foreach ($days as $day) {
                     $date = $day['date'];
                     if (!in_date_range($date, (string) $project['start_date'], (string) $project['end_date'])) {
                         continue;
                     }
-                    $persons[$personKey]['days'][$date][] = $project['project_name'];
+
+                    $persons[$personKey]['days'][$date][] = [
+                        'project_name' => (string) ($project['project_name'] ?? ''),
+                        'task_summary' => trim((string) ($project['task_summary'] ?? '')),
+                    ];
                 }
             }
         }
@@ -132,6 +137,7 @@ final class AnalyticsService
                         'date' => $date,
                         'status' => 'rest',
                         'text' => '调休',
+                        'items' => [],
                         'override_status' => $overrideStatus,
                     ];
                     continue;
@@ -142,6 +148,7 @@ final class AnalyticsService
                         'date' => $date,
                         'status' => 'idle',
                         'text' => '空闲',
+                        'items' => [],
                         'override_status' => $overrideStatus,
                     ];
                     continue;
@@ -154,14 +161,16 @@ final class AnalyticsService
                     $row['days'][] = [
                         'date' => $date,
                         'status' => 'conflict',
-                        'text' => implode(' / ', $items),
+                        'text' => '多项目',
+                        'items' => $items,
                         'override_status' => $overrideStatus,
                     ];
                 } else {
                     $row['days'][] = [
                         'date' => $date,
                         'status' => 'busy',
-                        'text' => $items[0],
+                        'text' => '有项目',
+                        'items' => $items,
                         'override_status' => $overrideStatus,
                     ];
                 }

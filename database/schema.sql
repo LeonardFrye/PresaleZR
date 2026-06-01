@@ -18,14 +18,21 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE TABLE IF NOT EXISTS projects (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    project_type VARCHAR(50) NOT NULL DEFAULT '',
     project_name VARCHAR(150) NOT NULL,
+    project_priority VARCHAR(50) NOT NULL DEFAULT '普通',
     project_region VARCHAR(100) NOT NULL,
     project_sales VARCHAR(100) NOT NULL,
+    support_department VARCHAR(100) NOT NULL DEFAULT '技术支撑事业部',
+    cross_department VARCHAR(100) NOT NULL DEFAULT '',
     support_role ENUM('售前', '实施') NOT NULL,
     support_personnel VARCHAR(255) NOT NULL,
+    start_at DATETIME NULL,
+    end_at DATETIME NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     duration_days INT UNSIGNED NOT NULL DEFAULT 1,
+    project_hours DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     task_summary TEXT NOT NULL,
     completion_feedback TEXT NULL,
     transfer_flag TINYINT(1) NOT NULL DEFAULT 0,
@@ -77,10 +84,11 @@ CREATE TABLE IF NOT EXISTS personnel_performance_scores (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     person_name VARCHAR(100) NOT NULL,
     work_date DATE NOT NULL,
-    score DECIMAL(8,2) NOT NULL DEFAULT 1.00,
+    project_id INT UNSIGNED NULL,
+    score DECIMAL(8,2) NOT NULL DEFAULT 0.00,
     updated_by INT UNSIGNED NULL,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_person_date (person_name, work_date),
+    UNIQUE KEY uk_person_date_project (person_name, work_date, project_id),
     CONSTRAINT fk_personnel_scores_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

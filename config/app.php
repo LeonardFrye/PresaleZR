@@ -11,7 +11,7 @@ return [
         'username' => '',
         'password' => '',
         'charset' => 'utf8mb4',
-        'auto_create_database' => false,
+        'auto_create_database' => true,
     ],
     'storage' => [
         'uploads' => __DIR__ . '/../storage/uploads',

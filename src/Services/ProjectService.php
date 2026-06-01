@@ -26,6 +26,8 @@ final class ProjectService
         $this->auth = $auth;
         $this->ensureWorkOrderStatusColumn();
         $this->ensureFeedbackTagColumn();
+        $this->ensureTemplateColumns();
+        $this->ensureDatetimeColumns();
     }
 
     public function list(array $filters = []): array
@@ -50,12 +52,45 @@ final class ProjectService
         $offset = ($page - 1) * $perPage;
 
         return [
-            'items' => $this->fetchProjects($filters, $perPage, $offset),
+            'items' => $this->fetchProjects($filters, $perPage, $offset, 'personnel'),
             'total' => $total,
             'page' => $page,
             'per_page' => $perPage,
             'total_pages' => $totalPages,
         ];
+    }
+
+    public function listByIds(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static function (int $id): bool {
+            return $id > 0;
+        })));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $sql = 'SELECT p.*, d.original_name AS receipt_name, u.display_name AS creator_name
+                FROM projects p
+                LEFT JOIN documents d ON d.id = p.receipt_document_id
+                LEFT JOIN users u ON u.id = p.created_by
+                WHERE p.id IN (' . $placeholders . ')';
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($ids);
+        $projects = $stmt->fetchAll() ?: [];
+        $projects = array_map([$this, 'decorateProject'], $projects);
+
+        $orderMap = array_flip($ids);
+        usort($projects, static function (array $left, array $right) use ($orderMap): int {
+            $leftOrder = $orderMap[(int) ($left['id'] ?? 0)] ?? PHP_INT_MAX;
+            $rightOrder = $orderMap[(int) ($right['id'] ?? 0)] ?? PHP_INT_MAX;
+
+            return $leftOrder <=> $rightOrder;
+        });
+
+        return $projects;
     }
 
     public function find(int $id): ?array
@@ -64,53 +99,123 @@ final class ProjectService
         $stmt->execute([$id]);
         $project = $stmt->fetch();
 
-        return $project ?: null;
+        return $project ? $this->decorateProject($project) : null;
     }
 
     public function save(array $data, array $user, string $ipAddress): int
     {
         $projectId = (int) ($data['project_id'] ?? 0);
+        $startAt = normalize_datetime_value((string) ($data['start_at'] ?? $data['start_date'] ?? ''));
+        $endAt = normalize_datetime_value((string) ($data['end_at'] ?? $data['end_date'] ?? ''));
+        $startDate = $startAt !== '' ? date('Y-m-d', strtotime($startAt)) : '';
+        $endDate = $endAt !== '' ? date('Y-m-d', strtotime($endAt)) : '';
+        $durationDays = $this->durationDays($startDate, $endDate);
+        $projectHours = $this->projectHours($startAt, $endAt);
+
         $payload = [
-            trim((string) ($data['project_name'] ?? '')),
-            trim((string) ($data['project_region'] ?? '')),
-            trim((string) ($data['project_sales'] ?? '')),
-            (string) ($data['support_role'] ?? ''),
-            trim((string) ($data['support_personnel'] ?? '')),
-            (string) ($data['start_date'] ?? ''),
-            (string) ($data['end_date'] ?? ''),
-            $this->durationDays((string) ($data['start_date'] ?? ''), (string) ($data['end_date'] ?? '')),
-            trim((string) ($data['task_summary'] ?? '')),
-            trim((string) ($data['completion_feedback'] ?? '')),
-            empty($data['transfer_flag']) ? 0 : 1,
-            empty($data['completion_flag']) ? 0 : 1,
-            (string) ($data['work_order_status'] ?? self::STATUS_SALES_TASK),
-            (string) ($data['feedback_tag'] ?? self::FEEDBACK_NORMAL),
+            'project_type' => trim((string) ($data['project_type'] ?? '')),
+            'project_name' => trim((string) ($data['project_name'] ?? '')),
+            'project_region' => trim((string) ($data['project_region'] ?? '')),
+            'project_priority' => trim((string) ($data['project_priority'] ?? '普通')),
+            'project_sales' => trim((string) ($data['project_sales'] ?? '')),
+            'support_department' => trim((string) ($data['support_department'] ?? '技术支撑事业部')),
+            'cross_department' => trim((string) ($data['cross_department'] ?? '')),
+            'support_role' => trim((string) ($data['support_role'] ?? '')),
+            'support_personnel' => trim((string) ($data['support_personnel'] ?? '')),
+            'start_at' => $startAt,
+            'end_at' => $endAt,
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'duration_days' => $durationDays,
+            'project_hours' => $projectHours,
+            'task_summary' => trim((string) ($data['task_summary'] ?? '')),
+            'completion_feedback' => trim((string) ($data['completion_feedback'] ?? '')),
+            'transfer_flag' => empty($data['transfer_flag']) ? 0 : 1,
+            'completion_flag' => empty($data['completion_flag']) ? 0 : 1,
+            'work_order_status' => (string) ($data['work_order_status'] ?? self::STATUS_SALES_TASK),
+            'feedback_tag' => (string) ($data['feedback_tag'] ?? self::FEEDBACK_NORMAL),
         ];
 
         $this->validate($payload);
 
         if ($projectId > 0) {
             $sql = 'UPDATE projects SET
-                    project_name = ?, project_region = ?, project_sales = ?, support_role = ?, support_personnel = ?,
-                    start_date = ?, end_date = ?, duration_days = ?, task_summary = ?, completion_feedback = ?,
-                    transfer_flag = ?, completion_flag = ?, work_order_status = ?, feedback_tag = ?, updated_by = ?, updated_at = NOW()
+                    project_type = ?, project_name = ?, project_region = ?, project_priority = ?, project_sales = ?,
+                    support_department = ?, cross_department = ?, support_role = ?, support_personnel = ?,
+                    start_at = ?, end_at = ?, start_date = ?, end_date = ?, duration_days = ?, project_hours = ?,
+                    task_summary = ?, completion_feedback = ?, transfer_flag = ?, completion_flag = ?,
+                    work_order_status = ?, feedback_tag = ?, updated_by = ?, updated_at = NOW()
                     WHERE id = ?';
-            $params = array_merge($payload, [(int) $user['id'], $projectId]);
+            $params = [
+                $payload['project_type'],
+                $payload['project_name'],
+                $payload['project_region'],
+                $payload['project_priority'],
+                $payload['project_sales'],
+                $payload['support_department'],
+                $payload['cross_department'],
+                $payload['support_role'],
+                $payload['support_personnel'],
+                $payload['start_at'],
+                $payload['end_at'],
+                $payload['start_date'],
+                $payload['end_date'],
+                $payload['duration_days'],
+                $payload['project_hours'],
+                $payload['task_summary'],
+                $payload['completion_feedback'],
+                $payload['transfer_flag'],
+                $payload['completion_flag'],
+                $payload['work_order_status'],
+                $payload['feedback_tag'],
+                (int) $user['id'],
+                $projectId,
+            ];
             $this->pdo->prepare($sql)->execute($params);
-            $this->auth->log((int) $user['id'], 'update', 'projects', '更新项目：' . $payload[0], $ipAddress, ['project_id' => $projectId]);
+            $this->auth->log((int) $user['id'], 'update', 'projects', '更新项目：' . $payload['project_name'], $ipAddress, [
+                'project_id' => $projectId,
+            ]);
 
             return $projectId;
         }
 
         $sql = 'INSERT INTO projects (
-                project_name, project_region, project_sales, support_role, support_personnel,
-                start_date, end_date, duration_days, task_summary, completion_feedback,
-                transfer_flag, completion_flag, work_order_status, feedback_tag, created_by, updated_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
-        $params = array_merge($payload, [(int) $user['id'], (int) $user['id']]);
+                project_type, project_name, project_region, project_priority, project_sales,
+                support_department, cross_department, support_role, support_personnel,
+                start_at, end_at, start_date, end_date, duration_days, project_hours,
+                task_summary, completion_feedback, transfer_flag, completion_flag,
+                work_order_status, feedback_tag, created_by, updated_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+        $params = [
+            $payload['project_type'],
+            $payload['project_name'],
+            $payload['project_region'],
+            $payload['project_priority'],
+            $payload['project_sales'],
+            $payload['support_department'],
+            $payload['cross_department'],
+            $payload['support_role'],
+            $payload['support_personnel'],
+            $payload['start_at'],
+            $payload['end_at'],
+            $payload['start_date'],
+            $payload['end_date'],
+            $payload['duration_days'],
+            $payload['project_hours'],
+            $payload['task_summary'],
+            $payload['completion_feedback'],
+            $payload['transfer_flag'],
+            $payload['completion_flag'],
+            $payload['work_order_status'],
+            $payload['feedback_tag'],
+            (int) $user['id'],
+            (int) $user['id'],
+        ];
         $this->pdo->prepare($sql)->execute($params);
         $projectId = (int) $this->pdo->lastInsertId();
-        $this->auth->log((int) $user['id'], 'create', 'projects', '新增项目：' . $payload[0], $ipAddress, ['project_id' => $projectId]);
+        $this->auth->log((int) $user['id'], 'create', 'projects', '新增项目：' . $payload['project_name'], $ipAddress, [
+            'project_id' => $projectId,
+        ]);
 
         return $projectId;
     }
@@ -123,7 +228,9 @@ final class ProjectService
         }
 
         $this->pdo->prepare('DELETE FROM projects WHERE id = ?')->execute([$id]);
-        $this->auth->log((int) $user['id'], 'delete', 'projects', '删除项目：' . $project['project_name'], $ipAddress, ['project_id' => $id]);
+        $this->auth->log((int) $user['id'], 'delete', 'projects', '删除项目：' . $project['project_name'], $ipAddress, [
+            'project_id' => $id,
+        ]);
     }
 
     public function bulkDelete(array $ids, array $user, string $ipAddress): int
@@ -173,7 +280,7 @@ final class ProjectService
             for ($j = $i + 1; $j < $count; $j++) {
                 $left = $projects[$i];
                 $right = $projects[$j];
-                if (!$this->datesOverlap($left['start_date'], $left['end_date'], $right['start_date'], $right['end_date'])) {
+                if (!$this->datesOverlap((string) $left['start_date'], (string) $left['end_date'], (string) $right['start_date'], (string) $right['end_date'])) {
                     continue;
                 }
 
@@ -199,16 +306,39 @@ final class ProjectService
         return $map;
     }
 
-    private function fetchProjects(array $filters = [], ?int $limit = null, ?int $offset = null): array
+    public static function statusOptions(): array
+    {
+        return [
+            self::STATUS_SALES_TASK => '销售发布任务',
+            self::STATUS_MANAGER_REVIEW => '技术管理审核',
+            self::STATUS_TECH_EXECUTION => '技术人员实施',
+        ];
+    }
+
+    public static function feedbackTagOptions(): array
+    {
+        return [
+            self::FEEDBACK_NORMAL => '正常',
+            self::FEEDBACK_BONUS => '加分',
+            self::FEEDBACK_COMPLAINT => '投诉',
+        ];
+    }
+
+    private function fetchProjects(array $filters = [], ?int $limit = null, ?int $offset = null, string $sortMode = 'default'): array
     {
         [$whereSql, $params] = $this->buildFilterClause($filters);
+        $orderSql = ' ORDER BY p.start_at DESC, p.id DESC';
+        if ($sortMode === 'personnel') {
+            $orderSql = ' ORDER BY p.support_personnel ASC, p.start_at DESC, p.id DESC';
+        }
+
         $sql = 'SELECT p.*, d.original_name AS receipt_name, u.display_name AS creator_name
                 FROM projects p
                 LEFT JOIN documents d ON d.id = p.receipt_document_id
                 LEFT JOIN users u ON u.id = p.created_by
                 WHERE 1=1'
             . $whereSql
-            . ' ORDER BY p.start_date DESC, p.id DESC';
+            . $orderSql;
 
         if ($limit !== null) {
             $sql .= ' LIMIT ' . max($limit, 1);
@@ -220,6 +350,7 @@ final class ProjectService
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
         $projects = $stmt->fetchAll() ?: [];
+        $projects = array_map([$this, 'decorateProject'], $projects);
 
         $conflictMap = $this->conflictMap($projects);
         foreach ($projects as &$project) {
@@ -262,34 +393,41 @@ final class ProjectService
 
     private function validate(array $payload): void
     {
-        $projectName = (string) ($payload[0] ?? '');
-        $projectRegion = (string) ($payload[1] ?? '');
-        $projectSales = (string) ($payload[2] ?? '');
-        $supportRole = (string) ($payload[3] ?? '');
-        $supportPersonnel = (string) ($payload[4] ?? '');
-        $startDate = (string) ($payload[5] ?? '');
-        $endDate = (string) ($payload[6] ?? '');
-        $durationDays = (int) ($payload[7] ?? 0);
-        $taskSummary = (string) ($payload[8] ?? '');
-        $workOrderStatus = (string) ($payload[12] ?? self::STATUS_SALES_TASK);
-        $feedbackTag = (string) ($payload[13] ?? self::FEEDBACK_NORMAL);
+        if (
+            $payload['project_name'] === ''
+            || $payload['project_region'] === ''
+            || $payload['project_sales'] === ''
+            || $payload['support_personnel'] === ''
+            || $payload['task_summary'] === ''
+        ) {
+            throw new RuntimeException('请完整填写项目名称、项目区域、项目销售、支撑人员和工作任务。');
+        }
 
-        if ($projectName === '' || $projectRegion === '' || $projectSales === '' || $supportPersonnel === '' || $taskSummary === '') {
-            throw new RuntimeException('请完整填写项目名称、区域、销售、支撑人员和工作任务。');
+        if (!in_array($payload['support_role'], ['售前', '实施'], true)) {
+            throw new RuntimeException('支撑岗位仅支持“售前”或“实施”。');
         }
-        if (!in_array($supportRole, ['售前', '实施'], true)) {
-            throw new RuntimeException('支撑岗位仅支持售前或实施。');
+
+        if ($payload['start_at'] === '' || $payload['end_at'] === '') {
+            throw new RuntimeException('开始时间和结束时间不能为空。');
         }
-        if (!$this->isDate($startDate) || !$this->isDate($endDate)) {
-            throw new RuntimeException('开始时间和结束时间格式不正确。');
+
+        if (strtotime($payload['end_at']) <= strtotime($payload['start_at'])) {
+            throw new RuntimeException('结束时间必须晚于开始时间。');
         }
-        if (strtotime($endDate) < strtotime($startDate) || $durationDays < 1) {
-            throw new RuntimeException('结束时间不能早于开始时间。');
+
+        if ((int) $payload['duration_days'] < 1) {
+            throw new RuntimeException('项目工期至少需要 1 天。');
         }
-        if (!in_array($workOrderStatus, array_keys(self::statusOptions()), true)) {
+
+        if ((float) $payload['project_hours'] < 0) {
+            throw new RuntimeException('项目工时计算异常，请检查开始和结束时间。');
+        }
+
+        if (!in_array($payload['work_order_status'], array_keys(self::statusOptions()), true)) {
             throw new RuntimeException('工单标签状态不合法。');
         }
-        if (!in_array($feedbackTag, array_keys(self::feedbackTagOptions()), true)) {
+
+        if (!in_array($payload['feedback_tag'], array_keys(self::feedbackTagOptions()), true)) {
             throw new RuntimeException('反馈标签不合法。');
         }
     }
@@ -305,14 +443,42 @@ final class ProjectService
         return (int) floor(($end - $start) / 86400) + 1;
     }
 
-    private function isDate(string $value): bool
+    private function projectHours(string $startAt, string $endAt): float
     {
-        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1;
+        return round(project_workload_score($startAt, $endAt), 2);
     }
 
     private function datesOverlap(string $leftStart, string $leftEnd, string $rightStart, string $rightEnd): bool
     {
         return strtotime($leftStart) <= strtotime($rightEnd) && strtotime($rightStart) <= strtotime($leftEnd);
+    }
+
+    private function decorateProject(array $project): array
+    {
+        $project['project_type'] = (string) ($project['project_type'] ?? '');
+        $project['project_priority'] = (string) ($project['project_priority'] ?? '普通');
+        $project['support_department'] = (string) ($project['support_department'] ?? '技术支撑事业部');
+        $project['cross_department'] = (string) ($project['cross_department'] ?? '');
+
+        if (empty($project['start_at']) && !empty($project['start_date'])) {
+            $project['start_at'] = $project['start_date'] . ' 09:00:00';
+        }
+        if (empty($project['end_at']) && !empty($project['end_date'])) {
+            $project['end_at'] = $project['end_date'] . ' 18:00:00';
+        }
+        if (empty($project['start_date']) && !empty($project['start_at'])) {
+            $project['start_date'] = date('Y-m-d', strtotime((string) $project['start_at']));
+        }
+        if (empty($project['end_date']) && !empty($project['end_at'])) {
+            $project['end_date'] = date('Y-m-d', strtotime((string) $project['end_at']));
+        }
+
+        $project['duration_days'] = $this->durationDays((string) ($project['start_date'] ?? ''), (string) ($project['end_date'] ?? ''));
+        $storedHours = isset($project['project_hours']) ? (float) $project['project_hours'] : 0.0;
+        $computedHours = $this->projectHours((string) ($project['start_at'] ?? ''), (string) ($project['end_at'] ?? ''));
+        $project['project_hours'] = $storedHours > 0 ? round($storedHours, 2) : $computedHours;
+
+        return $project;
     }
 
     private function ensureWorkOrderStatusColumn(): void
@@ -350,21 +516,66 @@ final class ProjectService
         );
     }
 
-    public static function statusOptions(): array
+    private function ensureTemplateColumns(): void
     {
-        return [
-            self::STATUS_SALES_TASK => '销售发布任务',
-            self::STATUS_MANAGER_REVIEW => '技术管理审核',
-            self::STATUS_TECH_EXECUTION => '技术人员实施',
-        ];
+        $this->ensureColumn(
+            'project_type',
+            "ALTER TABLE projects ADD COLUMN project_type VARCHAR(50) NOT NULL DEFAULT '' AFTER id"
+        );
+        $this->ensureColumn(
+            'project_priority',
+            "ALTER TABLE projects ADD COLUMN project_priority VARCHAR(50) NOT NULL DEFAULT '普通' AFTER project_name"
+        );
+        $this->ensureColumn(
+            'support_department',
+            "ALTER TABLE projects ADD COLUMN support_department VARCHAR(100) NOT NULL DEFAULT '技术支撑事业部' AFTER project_sales"
+        );
+        $this->ensureColumn(
+            'cross_department',
+            "ALTER TABLE projects ADD COLUMN cross_department VARCHAR(100) NOT NULL DEFAULT '' AFTER support_department"
+        );
+        $this->ensureColumn(
+            'project_hours',
+            "ALTER TABLE projects ADD COLUMN project_hours DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER duration_days"
+        );
     }
 
-    public static function feedbackTagOptions(): array
+    private function ensureDatetimeColumns(): void
     {
-        return [
-            self::FEEDBACK_NORMAL => '正常',
-            self::FEEDBACK_BONUS => '加分',
-            self::FEEDBACK_COMPLAINT => '投诉',
-        ];
+        $this->ensureColumn(
+            'start_at',
+            "ALTER TABLE projects ADD COLUMN start_at DATETIME NULL AFTER support_personnel"
+        );
+        $this->ensureColumn(
+            'end_at',
+            "ALTER TABLE projects ADD COLUMN end_at DATETIME NULL AFTER start_at"
+        );
+
+        $this->pdo->exec(
+            "UPDATE projects
+             SET start_at = CONCAT(start_date, ' 09:00:00')
+             WHERE start_at IS NULL AND start_date IS NOT NULL"
+        );
+        $this->pdo->exec(
+            "UPDATE projects
+             SET end_at = CONCAT(end_date, ' 18:00:00')
+             WHERE end_at IS NULL AND end_date IS NOT NULL"
+        );
+        $this->pdo->exec(
+            "UPDATE projects
+             SET project_hours = duration_days
+             WHERE (project_hours IS NULL OR project_hours = 0) AND duration_days IS NOT NULL"
+        );
+    }
+
+    private function ensureColumn(string $columnName, string $sql): void
+    {
+        $stmt = $this->pdo->query("SHOW COLUMNS FROM projects LIKE '{$columnName}'");
+        $column = $stmt ? $stmt->fetch() : false;
+        if ($column) {
+            return;
+        }
+
+        $this->pdo->exec($sql);
     }
 }
